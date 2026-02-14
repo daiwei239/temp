@@ -1,4 +1,4 @@
-const envApiBase = import.meta.env.VITE_API_BASE_URL?.trim();
+﻿const envApiBase = import.meta.env.VITE_API_BASE_URL?.trim();
 
 function normalizeBase(url: string): string {
   return url.replace(/\/+$/, "");

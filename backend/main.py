@@ -5,6 +5,7 @@ import uuid
 import json
 import os
 import httpx
+import asyncio
 
 app = FastAPI(title="Paper Analysis Backend")
 
@@ -47,6 +48,26 @@ STEP1_OUTPUT_SCHEMA = """{
   "title": "...",
   "research_gap": "...",
   "core_methodology": "...",
+  "framework_map": {
+    "nodes": [
+      {"id": "n1", "label": "Research Problem", "kind": "problem"},
+      {"id": "n2", "label": "Method Design", "kind": "method"},
+      {"id": "n3", "label": "Experimental Evidence", "kind": "evidence"}
+    ],
+    "links": [
+      {"from": "n1", "to": "n2", "label": "drives"},
+      {"from": "n2", "to": "n3", "label": "validated by"}
+    ]
+  },
+  "flow_chart": {
+    "title": "Method Workflow",
+    "steps": [
+      {"name": "Problem Formulation", "detail": "..."},
+      {"name": "Data/Knowledge Preparation", "detail": "..."},
+      {"name": "Modeling and Optimization", "detail": "..."},
+      {"name": "Evaluation and Analysis", "detail": "..."}
+    ]
+  },
   "structural_tree": {
     "problem_definition": ["..."],
     "technical_approach": ["..."],
@@ -135,7 +156,7 @@ async def run_step1_with_qwen(ws: WebSocket, paper_id: str) -> None:
               "content": prompt,
           },
       ],
-      "stream": False,
+      "stream": True,
       "temperature": 0.1,
   }
 
@@ -156,76 +177,135 @@ async def run_step1_with_qwen(ws: WebSocket, paper_id: str) -> None:
       },
   ]
   
-  resp = None
+  full_text = ""
   last_error = None
-  
+  last_status = None
+  streamed = False
+
   for headers in headers_list:
       try:
-          async with httpx.AsyncClient(timeout=60, trust_env=False) as client:
-              resp = await client.post(
+          async with httpx.AsyncClient(timeout=120, trust_env=False) as client:
+              async with client.stream(
+                  "POST",
                   MODELSCOPE_API_URL,
                   headers=headers,
                   json=payload,
-              )
-              if resp.status_code == 200:
-                  break  # 成功则跳出
-              elif resp.status_code == 401:
-                  last_error = f"Auth failed with headers: {headers.get('Authorization', '')[:20]}..."
-                  continue  # 尝试下一种认证方式
-              else:
-                  break  # 其他错误也跳出
+              ) as resp:
+                  last_status = resp.status_code
+                  if resp.status_code == 401:
+                      last_error = f"Auth failed with headers: {headers.get('Authorization', '')[:20]}..."
+                      continue
+                  if resp.status_code != 200:
+                      raw = await resp.aread()
+                      last_error = raw.decode("utf-8", errors="ignore")[:500]
+                      break
+
+                  async for line in resp.aiter_lines():
+                      line = (line or "").strip()
+                      if not line:
+                          continue
+                      if line.startswith("data:"):
+                          line = line[5:].strip()
+                      if line == "[DONE]":
+                          break
+                      try:
+                          payload_obj = json.loads(line)
+                      except json.JSONDecodeError:
+                          continue
+
+                      chunk = extract_stream_chunk(payload_obj)
+                      if not chunk:
+                          continue
+                      streamed = True
+                      full_text += chunk
+                      await ws.send_json({"type": "step1_stream", "content": chunk})
+                      await asyncio.sleep(0.01)
+
+                  if streamed:
+                      break
+
       except httpx.HTTPError as e:
           last_error = str(e)
           continue
-  if resp is None:
-      await ws.send_json(
-          {
-              "type": "status_change",
-              "msg": f"ModelScope 请求失败（未收到响应）：{last_error or '未知错误'}",
-          }
-      )
-      return
 
-  if resp.status_code != 200:
-      error_detail = resp.text[:500]  # 显示更多错误信息
+  if not streamed:
+      # 兜底：如果流式失败，再走一次非流式并人工切片
+      fallback_payload = dict(payload)
+      fallback_payload["stream"] = False
+      resp = None
+      for headers in headers_list:
+          try:
+              async with httpx.AsyncClient(timeout=120, trust_env=False) as client:
+                  resp = await client.post(
+                      MODELSCOPE_API_URL,
+                      headers=headers,
+                      json=fallback_payload,
+                  )
+                  if resp.status_code == 200:
+                      break
+                  if resp.status_code == 401:
+                      last_error = f"Auth failed with headers: {headers.get('Authorization', '')[:20]}..."
+                      continue
+                  break
+          except httpx.HTTPError as e:
+              last_error = str(e)
+              continue
+
+      if resp is None:
+          await ws.send_json(
+              {
+                  "type": "status_change",
+                  "msg": f"ModelScope 请求失败（未收到响应）：{last_error or '未知错误'}",
+              }
+          )
+          return
+
+      if resp.status_code != 200:
+          error_detail = resp.text[:500]
+          try:
+              error_json = resp.json()
+              error_detail = json.dumps(error_json, ensure_ascii=False, indent=2)
+          except Exception:
+              pass
+          await ws.send_json(
+              {
+                  "type": "status_change",
+                  "msg": f"ModelScope 接口错误 {resp.status_code}：{error_detail}",
+              }
+          )
+          return
+
+      data = resp.json()
       try:
-          error_json = resp.json()
-          error_detail = json.dumps(error_json, ensure_ascii=False, indent=2)
-      except Exception:
-          pass
+          content = data["choices"][0]["message"]["content"]
+      except (KeyError, IndexError, TypeError):
+          await ws.send_json(
+              {
+                  "type": "status_change",
+                  "msg": "ModelScope 返回格式异常。",
+              }
+          )
+          return
 
+      chunk_size = 40
+      for i in range(0, len(content), chunk_size):
+          chunk = content[i : i + chunk_size]
+          full_text += chunk
+          await ws.send_json({"type": "step1_stream", "content": chunk})
+          await asyncio.sleep(0.015)
+
+  if not full_text.strip():
       await ws.send_json(
           {
               "type": "status_change",
-              "msg": f"ModelScope 接口错误 {resp.status_code}：{error_detail}",
+              "msg": f"ModelScope 返回空内容。status={last_status or 'unknown'} error={last_error or 'n/a'}",
           }
       )
       return
 
-  data = resp.json()
-  # ModelScope Chat Completions 返回格式与 OpenAI 类似：choices[0].message.content
-  try:
-      content = data["choices"][0]["message"]["content"]
-  except (KeyError, IndexError, TypeError):
-      await ws.send_json(
-          {
-              "type": "status_change",
-              "msg": "ModelScope 返回格式异常。",
-          }
-      )
-      return
-
-  full_text = ""
-  # 为了前端有“流式”体验，这里把完整内容切片发送
-  chunk_size = 80
-  for i in range(0, len(content), chunk_size):
-      chunk = content[i : i + chunk_size]
-      full_text += chunk
-      await ws.send_json({"type": "step1_stream", "content": chunk})
-
-  # 尝试从内容中提取 JSON 结构（如果模型按要求返回了 JSON）
   result = safe_extract_json(full_text)
-  await ws.send_json({"type": "step1_done", "data": result})
+  normalized = normalize_step1_result(result)
+  await ws.send_json({"type": "step1_done", "data": normalized})
 
 
 def safe_extract_json(text: str) -> Dict[str, Any]:
@@ -239,6 +319,145 @@ def safe_extract_json(text: str) -> Dict[str, Any]:
       return json.loads(m.group(0))
   except json.JSONDecodeError:
       return {}
+
+
+def extract_stream_chunk(payload_obj: Dict[str, Any]) -> str:
+  """从流式返回片段中提取文本增量。"""
+  try:
+      choice = payload_obj.get("choices", [])[0]
+  except Exception:
+      return ""
+
+  delta = choice.get("delta")
+  if isinstance(delta, dict):
+      content = delta.get("content")
+      if isinstance(content, str):
+          return content
+
+  message = choice.get("message")
+  if isinstance(message, dict):
+      content = message.get("content")
+      if isinstance(content, str):
+          return content
+
+  content = choice.get("text")
+  if isinstance(content, str):
+      return content
+
+  return ""
+
+
+def normalize_step1_result(result: Dict[str, Any]) -> Dict[str, Any]:
+  """标准化模型返回：确保框架图/流程图字段存在且可前端直接渲染。"""
+  if not isinstance(result, dict):
+      result = {}
+
+  structural_tree = result.get("structural_tree") or {}
+  if not isinstance(structural_tree, dict):
+      structural_tree = {}
+
+  problem_definition = structural_tree.get("problem_definition") or []
+  technical_approach = structural_tree.get("technical_approach") or []
+  empirical_evidence = structural_tree.get("empirical_evidence") or []
+
+  if not isinstance(problem_definition, list):
+      problem_definition = [str(problem_definition)]
+  if not isinstance(technical_approach, list):
+      technical_approach = [str(technical_approach)]
+  if not isinstance(empirical_evidence, list):
+      empirical_evidence = [str(empirical_evidence)]
+
+  framework_map = result.get("framework_map") or {}
+  if not isinstance(framework_map, dict):
+      framework_map = {}
+
+  nodes = framework_map.get("nodes") or []
+  links = framework_map.get("links") or []
+
+  if not isinstance(nodes, list):
+      nodes = []
+  if not isinstance(links, list):
+      links = []
+
+  valid_nodes = []
+  for idx, n in enumerate(nodes):
+      if not isinstance(n, dict):
+          continue
+      label = str(n.get("label", "")).strip()
+      if not label:
+          continue
+      node_id = str(n.get("id", f"n{idx + 1}")).strip() or f"n{idx + 1}"
+      kind = str(n.get("kind", "")).strip() or "method"
+      valid_nodes.append({"id": node_id, "label": label, "kind": kind})
+
+  valid_links = []
+  for l in links:
+      if not isinstance(l, dict):
+          continue
+      src = str(l.get("from", "")).strip()
+      dst = str(l.get("to", "")).strip()
+      if not src or not dst:
+          continue
+      label = str(l.get("label", "")).strip()
+      valid_links.append({"from": src, "to": dst, "label": label})
+
+  # 若模型未产出可用框架图，基于结构树生成兜底框架
+  if not valid_nodes:
+      valid_nodes = [
+          {"id": "problem", "label": "研究问题", "kind": "problem"},
+          {"id": "method", "label": "方法设计", "kind": "method"},
+          {"id": "evidence", "label": "实验验证", "kind": "evidence"},
+      ]
+      if problem_definition:
+          valid_nodes[0]["label"] = str(problem_definition[0])[:60]
+      if technical_approach:
+          valid_nodes[1]["label"] = str(technical_approach[0])[:60]
+      if empirical_evidence:
+          valid_nodes[2]["label"] = str(empirical_evidence[0])[:60]
+
+  if not valid_links:
+      valid_links = [
+          {"from": valid_nodes[0]["id"], "to": valid_nodes[1]["id"], "label": "问题驱动方法"},
+          {"from": valid_nodes[1]["id"], "to": valid_nodes[2]["id"], "label": "方法获得证据"},
+      ]
+
+  flow_chart = result.get("flow_chart") or {}
+  if not isinstance(flow_chart, dict):
+      flow_chart = {}
+
+  flow_title = str(flow_chart.get("title", "")).strip() or "研究流程图"
+  flow_steps = flow_chart.get("steps") or []
+  if not isinstance(flow_steps, list):
+      flow_steps = []
+
+  valid_flow_steps = []
+  for s in flow_steps:
+      if not isinstance(s, dict):
+          continue
+      name = str(s.get("name", "")).strip()
+      if not name:
+          continue
+      detail = str(s.get("detail", "")).strip()
+      valid_flow_steps.append({"name": name, "detail": detail})
+
+  # 若流程图缺失，使用结构树兜底
+  if not valid_flow_steps:
+      fallback_steps = [
+          ("问题定义", problem_definition[0] if problem_definition else "识别关键研究问题"),
+          ("技术路径", technical_approach[0] if technical_approach else "设计核心方法并实现"),
+          ("实验验证", empirical_evidence[0] if empirical_evidence else "在基准数据上完成评估"),
+      ]
+      valid_flow_steps = [{"name": n, "detail": str(d)[:120]} for n, d in fallback_steps]
+
+  result["structural_tree"] = {
+      "problem_definition": [str(x) for x in problem_definition if str(x).strip()],
+      "technical_approach": [str(x) for x in technical_approach if str(x).strip()],
+      "empirical_evidence": [str(x) for x in empirical_evidence if str(x).strip()],
+  }
+  result["framework_map"] = {"nodes": valid_nodes, "links": valid_links}
+  result["flow_chart"] = {"title": flow_title, "steps": valid_flow_steps}
+
+  return result
 
 
 if __name__ == "__main__":

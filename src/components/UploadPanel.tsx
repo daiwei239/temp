@@ -1,4 +1,4 @@
-﻿import { useCallback, useState } from "react";
+﻿﻿import { useCallback, useState } from "react";
 import { motion } from "framer-motion";
 import { useDropzone } from "react-dropzone";
 import { getApiBaseUrl } from "../lib/backendUrl";
@@ -55,7 +55,7 @@ const UploadPanel = ({
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.28, ease: [0.2, 0, 0, 1] }}
-      className="rounded-3xl border border-slate-200/80 bg-white p-7 shadow-[0_10px_24px_rgba(15,23,42,0.08)]"
+      className="rounded-3xl border border-slate-200 bg-slate-50 p-7"
     >
       <div
         {...getRootProps()}

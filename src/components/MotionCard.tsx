@@ -1,4 +1,4 @@
-import { motion, type Variants } from "framer-motion";
+﻿import { motion, type Variants } from "framer-motion";
 import type { PropsWithChildren } from "react";
 
 export type StepKind =
@@ -34,11 +34,10 @@ const stepVariants: Record<StepKind, Variants> = {
     },
   },
   STEP_FOCUS: {
-    hidden: { scale: 0.96, opacity: 0.88, boxShadow: "0 6px 18px rgba(15,23,42,0.06)" },
+    hidden: { scale: 0.97, opacity: 0.9 },
     visible: {
       scale: 1,
       opacity: 1,
-      boxShadow: "0 14px 30px rgba(15,23,42,0.14)",
       transition: { duration: 0.24, ease: easeCurve },
     },
   },
@@ -52,6 +51,13 @@ const stepVariants: Record<StepKind, Variants> = {
   },
 };
 
+const toneByStep: Record<StepKind, string> = {
+  STEP_APPEAR: "border-blue-100 bg-blue-50/70",
+  STEP_EXPAND: "border-cyan-100 bg-cyan-50/70",
+  STEP_FOCUS: "border-indigo-100 bg-indigo-50/70",
+  STEP_FINAL: "border-emerald-100 bg-emerald-50/70",
+};
+
 const MotionCard = ({ step, title, subtitle, active, children }: MotionCardProps) => {
   return (
     <motion.article
@@ -60,11 +66,8 @@ const MotionCard = ({ step, title, subtitle, active, children }: MotionCardProps
       animate="visible"
       variants={stepVariants[step]}
       className={[
-        "rounded-2xl border bg-white p-6 md:p-7",
-        "shadow-[0_8px_20px_rgba(15,23,42,0.08)]",
-        active
-          ? "border-blue-200 bg-blue-50/40 shadow-[0_16px_34px_rgba(26,115,232,0.16)]"
-          : "border-slate-200/80",
+        "rounded-2xl border p-6 md:p-7",
+        active ? toneByStep[step] : "border-slate-200 bg-white",
       ].join(" ")}
     >
       <header className="mb-4 space-y-1">
