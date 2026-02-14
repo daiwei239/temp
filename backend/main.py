@@ -87,7 +87,15 @@ async def paper_stream(ws: WebSocket, paper_id: str) -> None:
           action = msg.get("action")
 
           if action == "analyze_step1":
-              await run_step1_with_qwen(ws, paper_id)
+              try:
+                  await run_step1_with_qwen(ws, paper_id)
+              except Exception as e:
+                  await ws.send_json(
+                      {
+                          "type": "status_change",
+                          "msg": f"后端分析过程出错：{str(e)}",
+                      }
+                  )
           # 预留其他阶段：
           # elif action == "reading_path":
           #     await run_step2_with_qwen(ws, paper_id)
@@ -101,7 +109,7 @@ async def run_step1_with_qwen(ws: WebSocket, paper_id: str) -> None:
   """阶段一：调用魔搭社区 Qwen 模型做结构解析，并以流式形式推送给前端。"""
   paper = PAPERS.get(paper_id)
   if not paper:
-      await ws.send_json({"type": "status_change", "msg": "Paper not found."})
+      await ws.send_json({"type": "status_change", "msg": "未找到论文，请先上传。"})
       return
 
   input_text = paper["text"][:20000]  # 防止过长
@@ -111,7 +119,7 @@ async def run_step1_with_qwen(ws: WebSocket, paper_id: str) -> None:
   )
 
   await ws.send_json(
-      {"type": "status_change", "msg": "Calling ModelScope Qwen for structural analysis..."}
+      {"type": "status_change", "msg": "正在调用 ModelScope 进行结构化分析..."}
   )
 
   # 按 ModelScope Chat Completions 接口格式构造请求
@@ -153,7 +161,7 @@ async def run_step1_with_qwen(ws: WebSocket, paper_id: str) -> None:
   
   for headers in headers_list:
       try:
-          async with httpx.AsyncClient(timeout=60) as client:
+          async with httpx.AsyncClient(timeout=60, trust_env=False) as client:
               resp = await client.post(
                   MODELSCOPE_API_URL,
                   headers=headers,
@@ -169,18 +177,27 @@ async def run_step1_with_qwen(ws: WebSocket, paper_id: str) -> None:
       except httpx.HTTPError as e:
           last_error = str(e)
           continue
-  if resp is None or resp.status_code != 200:
+  if resp is None:
+      await ws.send_json(
+          {
+              "type": "status_change",
+              "msg": f"ModelScope 请求失败（未收到响应）：{last_error or '未知错误'}",
+          }
+      )
+      return
+
+  if resp.status_code != 200:
       error_detail = resp.text[:500]  # 显示更多错误信息
       try:
           error_json = resp.json()
           error_detail = json.dumps(error_json, ensure_ascii=False, indent=2)
-      except:
+      except Exception:
           pass
-      
+
       await ws.send_json(
           {
               "type": "status_change",
-              "msg": f"ModelScope error {resp.status_code}: {error_detail}",
+              "msg": f"ModelScope 接口错误 {resp.status_code}：{error_detail}",
           }
       )
       return
@@ -193,7 +210,7 @@ async def run_step1_with_qwen(ws: WebSocket, paper_id: str) -> None:
       await ws.send_json(
           {
               "type": "status_change",
-              "msg": "ModelScope response format unexpected.",
+              "msg": "ModelScope 返回格式异常。",
           }
       )
       return

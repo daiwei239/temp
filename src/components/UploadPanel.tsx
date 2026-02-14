@@ -1,6 +1,7 @@
-import { useCallback, useState } from "react";
+﻿import { useCallback, useState } from "react";
 import { motion } from "framer-motion";
 import { useDropzone } from "react-dropzone";
+import { getApiBaseUrl } from "../lib/backendUrl";
 
 interface UploadPanelProps {
   onUploaded: (paperId: string) => void;
@@ -29,7 +30,7 @@ const UploadPanel = ({
       setFileName(file.name);
 
       try {
-        const response = await fetch("http://localhost:8002/api/paper/upload", {
+        const response = await fetch(`${getApiBaseUrl()}/api/paper/upload`, {
           method: "POST",
           headers: { "x-filename": file.name },
           body: file,
@@ -66,7 +67,7 @@ const UploadPanel = ({
         ].join(" ")}
       >
         <input {...getInputProps()} />
-        <h2 className="text-xl font-semibold text-slate-800">📄 上传论文</h2>
+        <h2 className="text-xl font-semibold text-slate-800">上传论文</h2>
         <p className="mt-2 text-sm leading-6 text-slate-600">
           拖拽 PDF 到这里，或点击选择文件开始分析。
         </p>
@@ -85,11 +86,7 @@ const UploadPanel = ({
           开始结构化分析
         </button>
         <p className="text-sm text-slate-600">
-          {isUploading
-            ? "正在上传论文..."
-            : hasPaper && !connected
-              ? "正在连接 WebSocket..."
-              : statusText}
+          {isUploading ? "正在上传论文..." : statusText}
         </p>
       </div>
     </motion.section>

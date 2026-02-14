@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import UploadPanel from "./components/UploadPanel";
 import StreamingContainer from "./components/StreamingContainer";
 import { usePaperStream } from "./hooks/usePaperStream";
@@ -52,13 +52,13 @@ const App = () => {
     <main className="mx-auto min-h-screen w-full max-w-6xl px-6 py-12 md:px-10">
       <section className="mb-10 rounded-3xl border border-slate-200/70 bg-white/85 p-8 shadow-[0_8px_24px_rgba(15,23,42,0.08)] backdrop-blur-sm">
         <p className="text-sm font-medium uppercase tracking-[0.12em] text-blue-700/90">
-          Academic Agent
+          学术助手
         </p>
         <h1 className="mt-2 text-3xl font-semibold leading-tight text-slate-800 md:text-4xl">
           论文结构化分析工作台
         </h1>
         <p className="mt-4 max-w-3xl text-base leading-7 text-slate-600">
-          流式结果将自动转为中文卡片，按步骤展示，并持续给出分析进度。
+          分析结果将以流式方式展示，并自动整理为结构化卡片，便于逐步阅读和理解。
         </p>
       </section>
 

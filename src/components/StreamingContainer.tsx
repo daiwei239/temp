@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+﻿import { useEffect, useMemo, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import MotionCard, { type StepKind } from "./MotionCard";
 
@@ -49,7 +49,14 @@ const buildStreamingCards = (streamText: string): DisplayCard[] => {
     return {
       id: `stream-${index}`,
       step,
-      icon: step === "STEP_APPEAR" ? "🧭" : step === "STEP_EXPAND" ? "🧪" : step === "STEP_FOCUS" ? "🔬" : "✅",
+      icon:
+        step === "STEP_APPEAR"
+          ? "🌟"
+          : step === "STEP_EXPAND"
+            ? "🧩"
+            : step === "STEP_FOCUS"
+              ? "🎯"
+              : "✅",
       title: `分析片段 ${String(index + 1).padStart(2, "0")}`,
       content: slice.trim(),
     };
@@ -63,7 +70,7 @@ const buildFinalCards = (data: StepResult): DisplayCard[] => {
     cards.push({
       id: "final-title",
       step: "STEP_APPEAR",
-      icon: "📘",
+      icon: "📌",
       title: "论文标题",
       content: data.title,
     });
@@ -72,7 +79,7 @@ const buildFinalCards = (data: StepResult): DisplayCard[] => {
     cards.push({
       id: "final-gap",
       step: "STEP_EXPAND",
-      icon: "🎯",
+      icon: "🧠",
       title: "研究缺口",
       content: data.research_gap,
     });
@@ -81,7 +88,7 @@ const buildFinalCards = (data: StepResult): DisplayCard[] => {
     cards.push({
       id: "final-method",
       step: "STEP_FOCUS",
-      icon: "🧠",
+      icon: "🛠",
       title: "核心方法",
       content: data.core_methodology,
     });
@@ -92,7 +99,7 @@ const buildFinalCards = (data: StepResult): DisplayCard[] => {
     cards.push({
       id: `pd-${index}`,
       step: "STEP_APPEAR",
-      icon: "⚠️",
+      icon: "🧭",
       title: `问题定义 ${index + 1}`,
       content: item,
     });
@@ -101,7 +108,7 @@ const buildFinalCards = (data: StepResult): DisplayCard[] => {
     cards.push({
       id: `ta-${index}`,
       step: "STEP_EXPAND",
-      icon: "🛠️",
+      icon: "🔧",
       title: `技术路径 ${index + 1}`,
       content: item,
     });
@@ -124,23 +131,23 @@ const stageMeta: Record<
   { title: string; subtitle: string; titleColor: string }
 > = {
   STEP_APPEAR: {
-    title: "STEP_APPEAR 首次显现",
-    subtitle: "问题线索逐步浮现",
+    title: "STEP_APPEAR 初步呈现",
+    subtitle: "问题线索逐步出现",
     titleColor: "text-blue-700",
   },
   STEP_EXPAND: {
     title: "STEP_EXPAND 路径展开",
-    subtitle: "方法内容向右衔接",
+    subtitle: "方法内容开始细化",
     titleColor: "text-cyan-700",
   },
   STEP_FOCUS: {
     title: "STEP_FOCUS 重点聚焦",
-    subtitle: "关键结论被突出强调",
+    subtitle: "关键结论被突出展示",
     titleColor: "text-indigo-700",
   },
   STEP_FINAL: {
-    title: "STEP_FINAL 最终呈现",
-    subtitle: "结果柔和收束",
+    title: "STEP_FINAL 最终结果",
+    subtitle: "分析结果汇总收束",
     titleColor: "text-emerald-700",
   },
 };
@@ -156,7 +163,10 @@ const StreamingContainer = ({
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   const cards = useMemo(
-    () => (step1Done && step1Data ? buildFinalCards(step1Data) : buildStreamingCards(streamText)),
+    () =>
+      step1Done && step1Data
+        ? buildFinalCards(step1Data)
+        : buildStreamingCards(streamText),
     [step1Done, step1Data, streamText],
   );
 
@@ -211,7 +221,7 @@ const StreamingContainer = ({
     <section className="mt-8 space-y-5">
       <div className="rounded-2xl border border-slate-200/70 bg-white/90 p-5 shadow-[0_8px_20px_rgba(15,23,42,0.07)]">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-slate-800">StreamingContainer</h2>
+          <h2 className="text-lg font-semibold text-slate-800">分析进度</h2>
           <span className="rounded-full bg-blue-100 px-3 py-1 text-sm font-semibold text-blue-700">
             进度 {progress}%
           </span>
@@ -233,21 +243,25 @@ const StreamingContainer = ({
         </p>
       </div>
 
-      {(["STEP_APPEAR", "STEP_EXPAND", "STEP_FOCUS", "STEP_FINAL"] as StepKind[]).map((step) => (
-        <MotionCard
-          key={step}
-          step={step}
-          title={stageMeta[step].title}
-          subtitle={stageMeta[step].subtitle}
-          active={grouped[step].length > 0}
-        >
-          {grouped[step].length > 0 ? (
-            renderItems(grouped[step])
-          ) : (
-            <p className={`text-sm ${stageMeta[step].titleColor} opacity-75`}>该步骤等待内容生成...</p>
-          )}
-        </MotionCard>
-      ))}
+      {(["STEP_APPEAR", "STEP_EXPAND", "STEP_FOCUS", "STEP_FINAL"] as StepKind[]).map(
+        (step) => (
+          <MotionCard
+            key={step}
+            step={step}
+            title={stageMeta[step].title}
+            subtitle={stageMeta[step].subtitle}
+            active={grouped[step].length > 0}
+          >
+            {grouped[step].length > 0 ? (
+              renderItems(grouped[step])
+            ) : (
+              <p className={`text-sm ${stageMeta[step].titleColor} opacity-75`}>
+                该步骤等待内容生成...
+              </p>
+            )}
+          </MotionCard>
+        ),
+      )}
 
       <div ref={bottomRef} />
     </section>
