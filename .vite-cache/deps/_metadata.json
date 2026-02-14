@@ -1,0 +1,61 @@
+{
+  "hash": "45f91b79",
+  "configHash": "e6e48760",
+  "lockfileHash": "5701df25",
+  "browserHash": "d7803f93",
+  "optimized": {
+    "react": {
+      "src": "../../node_modules/react/index.js",
+      "file": "react.js",
+      "fileHash": "9509ac9f",
+      "needsInterop": true
+    },
+    "react-dom": {
+      "src": "../../node_modules/react-dom/index.js",
+      "file": "react-dom.js",
+      "fileHash": "88d5e111",
+      "needsInterop": true
+    },
+    "react/jsx-dev-runtime": {
+      "src": "../../node_modules/react/jsx-dev-runtime.js",
+      "file": "react_jsx-dev-runtime.js",
+      "fileHash": "28eb9e65",
+      "needsInterop": true
+    },
+    "react/jsx-runtime": {
+      "src": "../../node_modules/react/jsx-runtime.js",
+      "file": "react_jsx-runtime.js",
+      "fileHash": "f18af40d",
+      "needsInterop": true
+    },
+    "framer-motion": {
+      "src": "../../node_modules/framer-motion/dist/es/index.mjs",
+      "file": "framer-motion.js",
+      "fileHash": "04ea4c00",
+      "needsInterop": false
+    },
+    "react-dom/client": {
+      "src": "../../node_modules/react-dom/client.js",
+      "file": "react-dom_client.js",
+      "fileHash": "58c71d2a",
+      "needsInterop": true
+    },
+    "react-dropzone": {
+      "src": "../../node_modules/react-dropzone/dist/es/index.js",
+      "file": "react-dropzone.js",
+      "fileHash": "5c534d77",
+      "needsInterop": false
+    }
+  },
+  "chunks": {
+    "chunk-E7PTPIRV": {
+      "file": "chunk-E7PTPIRV.js"
+    },
+    "chunk-43NWUZPV": {
+      "file": "chunk-43NWUZPV.js"
+    },
+    "chunk-5HAYVTYH": {
+      "file": "chunk-5HAYVTYH.js"
+    }
+  }
+}
