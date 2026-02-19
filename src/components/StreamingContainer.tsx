@@ -40,6 +40,40 @@ interface DisplayCard {
 
 const easeCurve: [number, number, number, number] = [0.2, 0, 0, 1];
 
+const TypewriterText = ({
+  text,
+  speed = 14,
+  className = "",
+}: {
+  text: string;
+  speed?: number;
+  className?: string;
+}) => {
+  const [chars, setChars] = useState(0);
+
+  useEffect(() => {
+    setChars(0);
+  }, [text]);
+
+  useEffect(() => {
+    if (!text || chars >= text.length) return;
+    const timer = window.setInterval(() => {
+      setChars((prev) => Math.min(text.length, prev + 1));
+    }, speed);
+    return () => window.clearInterval(timer);
+  }, [chars, speed, text]);
+
+  const done = chars >= text.length;
+  const preview = text.slice(0, chars);
+
+  return (
+    <span className={className}>
+      {preview}
+      {!done ? <span className="ml-0.5 inline-block h-4 w-[2px] animate-pulse bg-slate-400 align-middle" /> : null}
+    </span>
+  );
+};
+
 const buildFinalCards = (data: StepResult): DisplayCard[] => {
   const cards: DisplayCard[] = [];
 
@@ -108,25 +142,54 @@ const stageMeta: Record<
   { title: string; subtitle: string; itemClass: string }
 > = {
   STEP_APPEAR: {
-    title: "STEP_APPEAR 初步呈现",
+    title: "阶段一 初步呈现",
     subtitle: "问题线索逐步出现",
     itemClass: "bg-blue-50/60 border-blue-100",
   },
   STEP_EXPAND: {
-    title: "STEP_EXPAND 路径展开",
+    title: "阶段二 路径展开",
     subtitle: "方法内容开始细化",
     itemClass: "bg-cyan-50/60 border-cyan-100",
   },
   STEP_FOCUS: {
-    title: "STEP_FOCUS 重点聚焦",
+    title: "阶段三 重点聚焦",
     subtitle: "关键结论被突出展示",
     itemClass: "bg-indigo-50/60 border-indigo-100",
   },
   STEP_FINAL: {
-    title: "STEP_FINAL 最终结果",
+    title: "阶段四 最终结果",
     subtitle: "分析结果汇总收束",
     itemClass: "bg-emerald-50/60 border-emerald-100",
   },
+};
+
+const pickNodeEmoji = (kind?: string, label?: string) => {
+  const text = `${kind ?? ""} ${label ?? ""}`.toLowerCase();
+  if (text.includes("problem") || text.includes("问题")) return "🎯";
+  if (text.includes("method") || text.includes("方法")) return "🧩";
+  if (text.includes("evidence") || text.includes("实验") || text.includes("证据")) return "📊";
+  if (text.includes("data") || text.includes("数据")) return "🗂️";
+  return "🔹";
+};
+
+const pickStepEmoji = (name?: string) => {
+  const text = (name ?? "").toLowerCase();
+  if (text.includes("问题")) return "🧭";
+  if (text.includes("数据") || text.includes("知识")) return "🗃️";
+  if (text.includes("建模") || text.includes("优化") || text.includes("方法")) return "⚙️";
+  if (text.includes("评估") || text.includes("分析") || text.includes("实验")) return "📈";
+  if (text.includes("结论") || text.includes("总结")) return "✅";
+  return "🪄";
+};
+
+const detailToBullets = (detail?: string) => {
+  const raw = (detail ?? "").replace(/\s+/g, " ").trim();
+  if (!raw) return [] as string[];
+  return raw
+    .split(/[。；;，,]/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 3);
 };
 
 const StreamingContainer = ({
@@ -272,9 +335,11 @@ const StreamingContainer = ({
           >
             <h4 className="text-lg font-semibold tracking-wide text-slate-800 md:text-xl">
               <span className="mr-2">{item.icon}</span>
-              <span className="text-blue-700">{item.title}</span>
+              <TypewriterText text={item.title} speed={22} className="text-blue-700" />
             </h4>
-            <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-700">{item.content}</p>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-700">
+              <TypewriterText text={item.content} speed={12} />
+            </p>
           </motion.article>
         ))}
       </AnimatePresence>
@@ -303,6 +368,20 @@ const StreamingContainer = ({
     () => frameworkNodes.slice(0, frameworkVisibleCount),
     [frameworkNodes, frameworkVisibleCount],
   );
+  const visibleFlowSteps = useMemo(
+    () => flowSteps.slice(0, flowVisibleCount),
+    [flowSteps, flowVisibleCount],
+  );
+  const detailedFlowSteps = useMemo(
+    () =>
+      visibleFlowSteps.map((step, index) => ({
+        ...step,
+        index,
+        emoji: pickStepEmoji(step.name),
+        bullets: detailToBullets(step.detail),
+      })),
+    [visibleFlowSteps],
+  );
   const visibleNodeIds = useMemo(
     () => new Set(visibleFrameworkNodes.map((n) => n.id).filter(Boolean)),
     [visibleFrameworkNodes],
@@ -320,6 +399,8 @@ const StreamingContainer = ({
       visibleFrameworkNodes.map((node, index) => ({
         id: node.id || `node-${index}`,
         label: node.label || "",
+        kind: node.kind || "",
+        emoji: pickNodeEmoji(node.kind, node.label),
         x: 20,
         y: 14 + index * 78,
         width: 220,
@@ -341,7 +422,7 @@ const StreamingContainer = ({
   const gridClass = showRightPanel
     ? diagramCollapsed
       ? "mt-8 grid gap-6 md:grid-cols-[52px_minmax(0,1fr)_56px]"
-      : "mt-8 grid gap-6 md:grid-cols-[52px_minmax(0,1fr)_320px]"
+      : "mt-8 grid gap-6 md:grid-cols-[52px_minmax(0,1fr)_380px]"
     : "mt-8 grid gap-6 md:grid-cols-[52px_minmax(0,1fr)]";
 
   return (
@@ -403,9 +484,13 @@ const StreamingContainer = ({
 
       {showRightPanel ? (
         <aside className="md:sticky md:top-28 md:h-fit">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50">
-            <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
-              {!diagramCollapsed ? <p className="text-sm font-semibold text-slate-700">研究流程图</p> : null}
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-b from-slate-50 via-white to-blue-50/40 shadow-sm">
+            <div className="flex items-center justify-between border-b border-slate-200 bg-white/85 px-3 py-2 backdrop-blur">
+              {!diagramCollapsed ? (
+                <p className="text-sm font-semibold text-slate-700">
+                  🗺️ 分析流程总览
+                </p>
+              ) : null}
               <button
                 type="button"
                 onClick={() => setDiagramCollapsed((prev) => !prev)}
@@ -416,12 +501,27 @@ const StreamingContainer = ({
             </div>
 
             {diagramCollapsed ? (
-              <div className="flex h-24 items-center justify-center text-xs text-slate-500">图谱</div>
+              <div className="flex h-24 items-center justify-center text-xs text-slate-500">🧾 图谱</div>
             ) : (
               <div className="space-y-5 p-4">
+                <section className="grid grid-cols-3 gap-2">
+                  <article className="rounded-xl border border-blue-100 bg-blue-50/70 px-2 py-2 text-center">
+                    <p className="text-[11px] text-slate-500">节点数</p>
+                    <p className="text-sm font-semibold text-slate-700">{visibleFrameworkNodes.length}</p>
+                  </article>
+                  <article className="rounded-xl border border-cyan-100 bg-cyan-50/70 px-2 py-2 text-center">
+                    <p className="text-[11px] text-slate-500">关系数</p>
+                    <p className="text-sm font-semibold text-slate-700">{visibleFrameworkLinks.length}</p>
+                  </article>
+                  <article className="rounded-xl border border-indigo-100 bg-indigo-50/70 px-2 py-2 text-center">
+                    <p className="text-[11px] text-slate-500">步骤数</p>
+                    <p className="text-sm font-semibold text-slate-700">{visibleFlowSteps.length}</p>
+                  </article>
+                </section>
+
                 <section>
-                  <h4 className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">整体框架图</h4>
-                  <div className="relative rounded-xl border border-slate-200 bg-white p-2">
+                  <h4 className="mb-2 text-xs font-semibold tracking-[0.12em] text-slate-500">🧠 整体框架图</h4>
+                  <div className="relative rounded-xl border border-slate-200 bg-white/90 p-2 shadow-sm">
                     <svg
                       width="100%"
                       height={frameworkCanvasHeight}
@@ -464,7 +564,7 @@ const StreamingContainer = ({
                       {frameworkNodeLayout.map((node) => (
                         <div
                           key={node.id}
-                          className="absolute rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-slate-700"
+                          className="absolute rounded-lg border border-blue-100 bg-gradient-to-br from-blue-50 to-indigo-50 px-3 py-2 text-sm text-slate-700 shadow-sm"
                           style={{
                             left: `${node.x}px`,
                             top: `${node.y}px`,
@@ -472,7 +572,10 @@ const StreamingContainer = ({
                             minHeight: `${node.height}px`,
                           }}
                         >
-                          {node.label}
+                          <p className="mb-1 text-xs text-slate-500">
+                            {node.emoji} {node.kind || "节点"}
+                          </p>
+                          <TypewriterText text={node.label} speed={18} />
                         </div>
                       ))}
                     </div>
@@ -480,14 +583,40 @@ const StreamingContainer = ({
                 </section>
 
                 <section>
-                  <h4 className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-                    {step1Data?.flow_chart?.title || "流程图"}
+                  <h4 className="mb-2 text-xs font-semibold tracking-[0.12em] text-slate-500">
+                    🧪 {step1Data?.flow_chart?.title || "流程图"}
                   </h4>
-                  <ol className="space-y-2">
-                    {flowSteps.slice(0, flowVisibleCount).map((step, index) => (
-                      <li key={`${step.name}-${index}`} className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
-                        <p className="text-sm font-medium text-slate-800">{index + 1}. {step.name}</p>
-                        {step.detail ? <p className="mt-1 text-xs leading-5 text-slate-600">{step.detail}</p> : null}
+                  <ol className="space-y-3">
+                    {detailedFlowSteps.map((step) => (
+                      <li key={`${step.name}-${step.index}`} className="relative pl-8">
+                        <span className="absolute left-0 top-1.5 flex h-6 w-6 items-center justify-center rounded-full border border-blue-200 bg-white text-xs">
+                          {step.emoji}
+                        </span>
+                        {step.index < detailedFlowSteps.length - 1 ? (
+                          <span className="absolute left-3 top-8 h-[calc(100%-8px)] w-px bg-gradient-to-b from-blue-300 to-cyan-200" />
+                        ) : null}
+                        <article className="rounded-xl border border-blue-100 bg-gradient-to-r from-blue-50/90 via-cyan-50/75 to-white px-3 py-3 shadow-sm">
+                          <p className="text-sm font-semibold text-slate-800">
+                            第 {step.index + 1} 步: <TypewriterText text={step.name || "流程步骤"} speed={20} />
+                          </p>
+                          {step.detail ? (
+                            <p className="mt-1 text-xs leading-5 text-slate-600">
+                              <TypewriterText text={step.detail} speed={12} />
+                            </p>
+                          ) : null}
+                          {step.bullets.length > 0 ? (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {step.bullets.map((bullet, idx) => (
+                                <span
+                                  key={`${step.name}-tag-${idx}`}
+                                  className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-600"
+                                >
+                                  {idx === 0 ? "输入" : idx === 1 ? "处理" : "产出"}: {bullet}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
+                        </article>
                       </li>
                     ))}
                   </ol>

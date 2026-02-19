@@ -5,6 +5,8 @@ interface Handlers {
   onStatusChange?: (msg: string) => void;
   onStep1Stream?: (content: string) => void;
   onStep1Done?: (data: any) => void;
+  onChatStream?: (content: string) => void;
+  onChatDone?: (answer?: string) => void;
 }
 
 export function usePaperStream(paperId: string | null, handlers: Handlers) {
@@ -58,6 +60,12 @@ export function usePaperStream(paperId: string | null, handlers: Handlers) {
         case "step1_done":
           handlers.onStep1Done?.(data.data);
           break;
+        case "chat_stream":
+          handlers.onChatStream?.(data.content);
+          break;
+        case "chat_done":
+          handlers.onChatDone?.(data.answer);
+          break;
         default:
           break;
       }
@@ -70,9 +78,9 @@ export function usePaperStream(paperId: string | null, handlers: Handlers) {
     };
   }, [paperId]);
 
-  const sendAction = (action: string) => {
+  const sendAction = (action: string, payload?: Record<string, unknown>) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-    wsRef.current.send(JSON.stringify({ action }));
+    wsRef.current.send(JSON.stringify({ action, ...(payload ?? {}) }));
   };
 
   return { sendAction, connected };

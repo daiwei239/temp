@@ -1,6 +1,7 @@
 ﻿import { AnimatePresence, motion } from "framer-motion";
 import { useMemo, useState } from "react";
 import UploadPanel from "./components/UploadPanel";
+import PaperChatDock, { type ChatMessage } from "./components/PaperChatDock";
 import StreamingContainer from "./components/StreamingContainer";
 import { usePaperStream } from "./hooks/usePaperStream";
 
@@ -131,6 +132,8 @@ const HomePage = () => {
   const [step1Text, setStep1Text] = useState("");
   const [step1Done, setStep1Done] = useState(false);
   const [step1Data, setStep1Data] = useState<StepResult | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatPending, setChatPending] = useState(false);
 
   const { sendAction, connected } = usePaperStream(paperId, {
     onStatusChange: (msg) => setStatusText(msg),
@@ -140,6 +143,52 @@ const HomePage = () => {
       setStep1Done(true);
       setStatusText("结构化分析已完成");
     },
+    onChatStream: (chunk) => {
+      setChatPending(true);
+      setChatMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last && last.role === "assistant" && last.streaming) {
+          const updated = [...prev];
+          updated[updated.length - 1] = {
+            ...last,
+            content: `${last.content}${chunk}`,
+          };
+          return updated;
+        }
+        return [
+          ...prev,
+          {
+            id: `assistant-${Date.now()}`,
+            role: "assistant",
+            content: chunk,
+            streaming: true,
+          },
+        ];
+      });
+    },
+    onChatDone: (answer) => {
+      setChatPending(false);
+      setChatMessages((prev) => {
+        if (prev.length === 0) {
+          return answer
+            ? [{ id: `assistant-${Date.now()}`, role: "assistant", content: answer, streaming: false }]
+            : prev;
+        }
+        const last = prev[prev.length - 1];
+        if (last.role === "assistant") {
+          const updated = [...prev];
+          updated[updated.length - 1] = {
+            ...last,
+            content: answer && answer.trim() ? answer : last.content,
+            streaming: false,
+          };
+          return updated;
+        }
+        return answer
+          ? [...prev, { id: `assistant-${Date.now()}`, role: "assistant", content: answer, streaming: false }]
+          : prev;
+      });
+    },
   });
 
   const handleUploaded = (newPaperId: string) => {
@@ -147,6 +196,8 @@ const HomePage = () => {
     setStep1Text("");
     setStep1Data(null);
     setStep1Done(false);
+    setChatMessages([]);
+    setChatPending(false);
     setStatusText("上传完成，等待开始分析...");
   };
 
@@ -159,8 +210,20 @@ const HomePage = () => {
     sendAction("analyze_step1");
   };
 
+  const handleSendChat = (question: string) => {
+    if (!paperId) return;
+    setChatMessages((prev) => [
+      ...prev,
+      { id: `user-${Date.now()}`, role: "user", content: question },
+      { id: `assistant-${Date.now() + 1}`, role: "assistant", content: "", streaming: true },
+    ]);
+    setChatPending(true);
+    setStatusText("正在生成追问回答...");
+    sendAction("paper_chat", { question });
+  };
+
   return (
-    <>
+    <div className="pb-32">
       <section className="mb-10 rounded-3xl border border-slate-200 bg-slate-50 p-8">
         <p className="text-sm font-medium uppercase tracking-[0.12em] text-blue-700/90">学术助手</p>
         <h1 className="mt-2 text-3xl font-semibold leading-tight text-slate-800 md:text-4xl">论文结构化分析工作台</h1>
@@ -183,10 +246,17 @@ const HomePage = () => {
         statusText={statusText}
         step1Done={step1Done}
       />
-    </>
+
+      <PaperChatDock
+        messages={chatMessages}
+        hasPaper={Boolean(paperId)}
+        connected={connected}
+        sending={chatPending}
+        onSend={handleSendChat}
+      />
+    </div>
   );
 };
-
 const App = () => {
   const [activeView, setActiveView] = useState<ViewKey>("home");
 
@@ -271,4 +341,8 @@ const App = () => {
 };
 
 export default App;
+
+
+
+
 
