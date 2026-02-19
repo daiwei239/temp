@@ -276,9 +276,8 @@ async def run_step1_with_qwen(ws: WebSocket, paper_id: str) -> None:
           return
 
       data = resp.json()
-      try:
-          content = data["choices"][0]["message"]["content"]
-      except (KeyError, IndexError, TypeError):
+      content = extract_nonstream_content(data)
+      if not content:
           await ws.send_json(
               {
                   "type": "status_change",
@@ -343,6 +342,79 @@ def extract_stream_chunk(payload_obj: Dict[str, Any]) -> str:
   content = choice.get("text")
   if isinstance(content, str):
       return content
+
+  # Some providers wrap stream delta in payload.output.choices
+  output = payload_obj.get("output")
+  if isinstance(output, dict):
+      try:
+          choice = output.get("choices", [])[0]
+      except Exception:
+          choice = {}
+      if isinstance(choice, dict):
+          delta = choice.get("delta")
+          if isinstance(delta, dict):
+              content = delta.get("content")
+              if isinstance(content, str):
+                  return content
+          message = choice.get("message")
+          if isinstance(message, dict):
+              content = message.get("content")
+              if isinstance(content, str):
+                  return content
+          content = choice.get("text")
+          if isinstance(content, str):
+              return content
+
+      text = output.get("text")
+      if isinstance(text, str):
+          return text
+
+  return ""
+
+
+def extract_nonstream_content(payload_obj: Dict[str, Any]) -> str:
+  """兼容不同供应商/网关返回格式，提取完整文本。"""
+  if not isinstance(payload_obj, dict):
+      return ""
+
+  # OpenAI-like: {"choices":[{"message":{"content":"..."}}]}
+  try:
+      c = payload_obj.get("choices", [])[0]
+      msg = c.get("message", {})
+      content = msg.get("content")
+      if isinstance(content, str) and content.strip():
+          return content
+      if isinstance(content, list):
+          joined = "".join(
+              p.get("text", "") for p in content if isinstance(p, dict)
+          )
+          if joined.strip():
+              return joined
+      txt = c.get("text")
+      if isinstance(txt, str) and txt.strip():
+          return txt
+  except Exception:
+      pass
+
+  # Some gateways: {"output":{"choices":[{"message":{"content":"..."}}]}}
+  output = payload_obj.get("output")
+  if isinstance(output, dict):
+      try:
+          c = output.get("choices", [])[0]
+          msg = c.get("message", {})
+          content = msg.get("content")
+          if isinstance(content, str) and content.strip():
+              return content
+          txt = c.get("text")
+          if isinstance(txt, str) and txt.strip():
+              return txt
+      except Exception:
+          pass
+
+      # Some models return {"output":{"text":"..."}}
+      txt = output.get("text")
+      if isinstance(txt, str) and txt.strip():
+          return txt
 
   return ""
 
