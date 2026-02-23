@@ -5,6 +5,7 @@ interface Handlers {
   onStatusChange?: (msg: string) => void;
   onStep1Stream?: (content: string) => void;
   onStep1Done?: (data: any) => void;
+  onStep1Card?: (card: any) => void;
   onChatStream?: (content: string) => void;
   onChatDone?: (answer?: string) => void;
 }
@@ -59,6 +60,9 @@ export function usePaperStream(paperId: string | null, handlers: Handlers) {
           break;
         case "step1_done":
           handlers.onStep1Done?.(data.data);
+          break;
+        case "step1_card":
+          handlers.onStep1Card?.(data.card);
           break;
         case "chat_stream":
           handlers.onChatStream?.(data.content);

@@ -24,6 +24,13 @@ interface StepResult {
 interface StreamingContainerProps {
   streamText: string;
   step1Data: StepResult | null;
+  step1Cards?: DisplayCard[];
+  paperMeta?: {
+    keywords: string[];
+    authors: string;
+    impactFactor: string;
+    publishYear: string;
+  };
   statusText: string;
   hasPaper: boolean;
   connected: boolean;
@@ -195,6 +202,8 @@ const detailToBullets = (detail?: string) => {
 const StreamingContainer = ({
   streamText,
   step1Data,
+  step1Cards = [],
+  paperMeta,
   statusText,
   hasPaper,
   connected,
@@ -207,7 +216,10 @@ const StreamingContainer = ({
   const [typedChars, setTypedChars] = useState(0);
   const [diagramCollapsed, setDiagramCollapsed] = useState(false);
 
-  const finalCards = useMemo(() => (step1Data ? buildFinalCards(step1Data) : []), [step1Data]);
+  const finalCards = useMemo(() => {
+    if (step1Cards.length > 0) return step1Cards;
+    return step1Data ? buildFinalCards(step1Data) : [];
+  }, [step1Cards, step1Data]);
   const frameworkNodes = useMemo(
     () => step1Data?.framework_map?.nodes?.filter((n) => (n?.label ?? "").trim()) ?? [],
     [step1Data],
@@ -253,7 +265,11 @@ const StreamingContainer = ({
     return () => window.clearInterval(interval);
   }, [finalCards.length, step1Done]);
 
-  const cards = step1Done ? finalCards.slice(0, displayedFinalCount) : [];
+  const cards = step1Cards.length > 0
+    ? finalCards
+    : step1Done
+      ? finalCards.slice(0, displayedFinalCount)
+      : [];
   const streamPreview = streamText.slice(0, typedChars);
 
   const grouped = useMemo(
@@ -317,9 +333,9 @@ const StreamingContainer = ({
   const progress = Math.round(displayedProgress);
 
   useEffect(() => {
-    if (!step1Done || cards.length === 0) return;
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [cards.length, step1Done]);
+    if (!hasPaper) return;
+    bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+  }, [typedChars, cards.length, streamText.length, hasPaper]);
 
   const renderItems = (items: DisplayCard[], step: StepKind) => (
     <div className="space-y-3">
@@ -350,7 +366,7 @@ const StreamingContainer = ({
   const visibleSteps = hasPaper ? stepOrder.filter((step) => grouped[step].length > 0) : [];
 
   const hasDiagramData = frameworkNodes.length > 0 || flowSteps.length > 0;
-  const showRightPanel = step1Done && hasDiagramData;
+  const showRightPanel = step1Done;
 
   useEffect(() => {
     if (!showRightPanel) {
@@ -445,7 +461,7 @@ const StreamingContainer = ({
       </aside>
 
       <div className="space-y-5">
-        {!hasPaper ? null : !step1Done ? (
+        {!hasPaper ? null : (!step1Done && step1Cards.length === 0) ? (
           <motion.article
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -504,6 +520,38 @@ const StreamingContainer = ({
               <div className="flex h-24 items-center justify-center text-xs text-slate-500">🧾 图谱</div>
             ) : (
               <div className="space-y-5 p-4">
+                <section className="rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm">
+                  <h4 className="mb-3 text-xs font-semibold tracking-[0.12em] text-slate-500">📄 论文基本信息</h4>
+                  <div className="space-y-2 text-xs text-slate-600">
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-slate-500">作者</span>
+                      <span className="rounded-md bg-slate-100 px-2 py-1 text-slate-700">{paperMeta?.authors || "待识别"}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-slate-500">影响因子</span>
+                      <span className="rounded-md bg-slate-100 px-2 py-1 text-slate-700">{paperMeta?.impactFactor || "待识别"}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-slate-500">发表年份</span>
+                      <span className="rounded-md bg-slate-100 px-2 py-1 text-slate-700">{paperMeta?.publishYear || "待识别"}</span>
+                    </div>
+                    <div className="pt-1">
+                      <p className="mb-2 text-slate-500">关键词</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(paperMeta?.keywords?.length ? paperMeta.keywords : ["待识别"]).map((keyword, idx) => (
+                          <span
+                            key={`${keyword}-${idx}`}
+                            className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-700"
+                          >
+                            {keyword}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                {hasDiagramData ? (
                 <section className="grid grid-cols-3 gap-2">
                   <article className="rounded-xl border border-blue-100 bg-blue-50/70 px-2 py-2 text-center">
                     <p className="text-[11px] text-slate-500">节点数</p>
@@ -518,7 +566,9 @@ const StreamingContainer = ({
                     <p className="text-sm font-semibold text-slate-700">{visibleFlowSteps.length}</p>
                   </article>
                 </section>
+                ) : null}
 
+                {hasDiagramData ? (
                 <section>
                   <h4 className="mb-2 text-xs font-semibold tracking-[0.12em] text-slate-500">🧠 整体框架图</h4>
                   <div className="relative rounded-xl border border-slate-200 bg-white/90 p-2 shadow-sm">
@@ -581,7 +631,9 @@ const StreamingContainer = ({
                     </div>
                   </div>
                 </section>
+                ) : null}
 
+                {hasDiagramData ? (
                 <section>
                   <h4 className="mb-2 text-xs font-semibold tracking-[0.12em] text-slate-500">
                     🧪 {step1Data?.flow_chart?.title || "流程图"}
@@ -621,6 +673,7 @@ const StreamingContainer = ({
                     ))}
                   </ol>
                 </section>
+                ) : null}
               </div>
             )}
           </div>

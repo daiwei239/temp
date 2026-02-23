@@ -1,12 +1,15 @@
-﻿from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, Any
 import uuid
 import json
 import os
+import io
 import httpx
 import asyncio
-
+import re
+import xml.etree.ElementTree as ET
+from urllib.parse import quote_plus
 app = FastAPI(title="Paper Analysis Backend")
 
 app.add_middleware(
@@ -25,6 +28,437 @@ MODEL_NAME = "deepseek-ai/DeepSeek-V3.2"  # DeepSeek 鎺ㄧ悊妯″瀷锛堝皬
 
 # 绠€鍗曞唴瀛樺瓨鍌紝鐢熶骇鐜璇锋浛鎹负鏁版嵁搴撴垨缂撳瓨
 PAPERS: Dict[str, Dict[str, Any]] = {}
+
+ARXIV_DOMAIN_QUERY: Dict[str, str] = {
+  "ai": "cat:cs.AI",
+  "systems": "cat:cs.DC OR cat:cs.OS",
+  "software": "cat:cs.SE",
+  "database": "cat:cs.DB",
+  "network": "cat:cs.NI",
+  "math_opt": "cat:math.OC",
+  "math_stats": "cat:math.ST OR cat:stat.TH",
+  "math_ap": "cat:math.AP",
+  "math_pr": "cat:math.PR",
+  "math_nt": "cat:math.NT",
+  "phys_hep": "cat:hep-th",
+  "phys_cond": "cat:cond-mat.mtrl-sci OR cat:cond-mat.stat-mech",
+  "phys_quant": "cat:quant-ph",
+  "phys_astro": "cat:astro-ph.GA",
+  "phys_plasma": "cat:physics.plasm-ph",
+  "bio_genomics": "cat:q-bio.GN",
+  "bio_neurons": "cat:q-bio.NC",
+  "bio_bm": "cat:q-bio.BM",
+  "bio_pe": "cat:q-bio.PE",
+  "bio_qm": "cat:q-bio.QM",
+  "econ_theory": "cat:econ.TH",
+  "econ_em": "cat:econ.EM",
+  "econ_gn": "cat:econ.GN",
+  "econ_fin": "cat:q-fin.EC",
+  "econ_trade": "cat:q-fin.GN",
+  "med_imaging": "cat:eess.IV OR cat:cs.CV",
+  "med_bioinfo": "cat:q-bio.BM OR cat:q-bio.GN",
+  "med_neuro": "cat:q-bio.NC",
+  "med_genomics": "cat:q-bio.GN",
+  "med_public": "cat:q-bio.PE",
+  "chem_physical": "cat:physics.chem-ph",
+  "chem_theory": "cat:physics.chem-ph OR cat:cond-mat.stat-mech",
+  "chem_materials": "cat:cond-mat.mtrl-sci",
+  "chem_comp": "cat:physics.comp-ph",
+  "chem_spectro": "cat:physics.atom-ph",
+  "mat_condensed": "cat:cond-mat.str-el",
+  "mat_soft": "cat:cond-mat.soft",
+  "mat_mtrl": "cat:cond-mat.mtrl-sci",
+  "mat_polymer": "cat:cond-mat.soft",
+  "mat_nano": "cat:cond-mat.mes-hall",
+  "earth_geophysics": "cat:physics.geo-ph",
+  "earth_climate": "cat:physics.ao-ph",
+  "earth_atmos": "cat:physics.ao-ph",
+  "earth_planet": "cat:astro-ph.EP",
+  "earth_ocean": "cat:physics.ao-ph",
+  "social_econ": "cat:econ.GN OR cat:econ.EM",
+  "social_stats": "cat:stat.AP",
+  "social_network": "cat:cs.SI",
+  "social_policy": "cat:econ.GN",
+  "social_behavior": "cat:q-bio.PE OR cat:cs.CY",
+}
+
+ARXIV_DOMAIN_VENUE: Dict[str, str] = {
+  "ai": "AI",
+  "systems": "SYSTEMS",
+  "software": "SE",
+  "database": "DB",
+  "network": "NET",
+  "math_opt": "MATH-OC",
+  "math_stats": "MATH-ST",
+  "math_ap": "MATH-AP",
+  "math_pr": "MATH-PR",
+  "math_nt": "MATH-NT",
+  "phys_hep": "HEP-TH",
+  "phys_cond": "COND-MAT",
+  "phys_quant": "QUANT-PH",
+  "phys_astro": "ASTRO-PH",
+  "phys_plasma": "PLASMA",
+  "bio_genomics": "QBIO-GN",
+  "bio_neurons": "QBIO-NC",
+  "bio_bm": "QBIO-BM",
+  "bio_pe": "QBIO-PE",
+  "bio_qm": "QBIO-QM",
+  "econ_theory": "ECON-TH",
+  "econ_em": "ECON-EM",
+  "econ_gn": "ECON-GN",
+  "econ_fin": "QFIN-EC",
+  "econ_trade": "QFIN-GN",
+  "med_imaging": "MED-IMG",
+  "med_bioinfo": "MED-BIO",
+  "med_neuro": "MED-NEURO",
+  "med_genomics": "MED-GENO",
+  "med_public": "MED-PUBLIC",
+  "chem_physical": "CHEM-PH",
+  "chem_theory": "CHEM-TH",
+  "chem_materials": "CHEM-MTRL",
+  "chem_comp": "CHEM-COMP",
+  "chem_spectro": "CHEM-SPEC",
+  "mat_condensed": "MAT-COND",
+  "mat_soft": "MAT-SOFT",
+  "mat_mtrl": "MAT-SCI",
+  "mat_polymer": "MAT-POLY",
+  "mat_nano": "MAT-NANO",
+  "earth_geophysics": "EARTH-GEO",
+  "earth_climate": "EARTH-CLIMATE",
+  "earth_atmos": "EARTH-ATM",
+  "earth_planet": "EARTH-PLANET",
+  "earth_ocean": "EARTH-OCEAN",
+  "social_econ": "SOC-ECON",
+  "social_stats": "SOC-STAT",
+  "social_network": "SOC-NET",
+  "social_policy": "SOC-POLICY",
+  "social_behavior": "SOC-BEHAV",
+}
+
+ARXIV_API_BASES = [
+  # Primary
+  "https://export.arxiv.org",
+  # Mirror/fallback
+  "https://arxiv.org",
+  "http://export.arxiv.org",
+  "http://arxiv.org",
+]
+
+
+def _split_keywords(raw: str) -> list[str]:
+  if not raw:
+      return []
+  items = re.split(r"[;,，；、|/]\s*|\s{2,}", raw)
+  cleaned: list[str] = []
+  for item in items:
+      token = item.strip().strip(".。:：")
+      if not token:
+          continue
+      if len(token) < 2 or len(token) > 48:
+          continue
+      cleaned.append(token)
+  # de-duplicate while keeping order
+  dedup = list(dict.fromkeys(cleaned))
+  return dedup[:10]
+
+
+def _extract_keywords_from_text(text: str) -> list[str]:
+  head = (text or "")[:12000]
+  patterns = [
+      r"(?im)^\s*(?:keywords?|index terms?)\s*[:：]\s*(.+)$",
+      r"(?im)^\s*关键词\s*[:：]\s*(.+)$",
+  ]
+  for pattern in patterns:
+      m = re.search(pattern, head)
+      if not m:
+          continue
+      kws = _split_keywords(m.group(1))
+      if kws:
+          return kws
+  return []
+
+
+def _extract_year_from_text(text: str) -> str:
+  head = (text or "")[:15000]
+  candidates = re.findall(r"\b(19\d{2}|20\d{2})\b", head)
+  for y in candidates:
+      year = int(y)
+      if 1900 <= year <= 2100:
+          return str(year)
+  return ""
+
+
+def _extract_authors_from_text(text: str) -> str:
+  lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
+  if not lines:
+      return ""
+  # Heuristic: in the first few lines, pick a likely author line.
+  for line in lines[:14]:
+      lowered = line.lower()
+      if any(k in lowered for k in ["abstract", "摘要", "keywords", "关键词", "introduction", "doi", "arxiv"]):
+          continue
+      if re.search(r"\d", line):
+          continue
+      if len(line) < 4 or len(line) > 120:
+          continue
+      # Typical separators for author lists.
+      if any(sep in line for sep in [",", "，", " and ", "、"]):
+          return line
+  return ""
+
+
+def extract_basic_meta(raw_bytes: bytes, extracted_text: str, filename: str) -> Dict[str, Any]:
+  meta: Dict[str, Any] = {
+      "authors": "待识别",
+      "impact_factor": "待识别",
+      "publish_year": "待识别",
+      "keywords": [],
+  }
+
+  try:
+      from pypdf import PdfReader  # type: ignore
+
+      reader = PdfReader(io.BytesIO(raw_bytes))
+      info = reader.metadata or {}
+      author = str(info.get("/Author", "")).strip()
+      if author:
+          meta["authors"] = author
+      creation = str(info.get("/CreationDate", "")).strip()
+      y = re.search(r"(19\d{2}|20\d{2})", creation)
+      if y:
+          meta["publish_year"] = y.group(1)
+  except Exception:
+      pass
+
+  kws = _extract_keywords_from_text(extracted_text)
+  if kws:
+      meta["keywords"] = kws
+
+  if meta["authors"] == "待识别":
+      guessed_authors = _extract_authors_from_text(extracted_text)
+      if guessed_authors:
+          meta["authors"] = guessed_authors
+
+  if meta["publish_year"] == "待识别":
+      guessed_year = _extract_year_from_text(extracted_text)
+      if guessed_year:
+          meta["publish_year"] = guessed_year
+
+  return meta
+
+
+def normalize_paper_meta(meta: Dict[str, Any] | None) -> Dict[str, Any]:
+  data = meta if isinstance(meta, dict) else {}
+
+  authors = str(data.get("authors", "")).strip() or "待识别"
+  impact_factor = str(data.get("impact_factor", "")).strip() or "待识别"
+  publish_year = str(data.get("publish_year", "")).strip() or "待识别"
+
+  keywords = data.get("keywords", [])
+  if isinstance(keywords, str):
+      keywords = _split_keywords(keywords)
+  elif isinstance(keywords, list):
+      keywords = [str(k).strip() for k in keywords if str(k).strip()]
+  else:
+      keywords = []
+
+  keywords = list(dict.fromkeys(keywords))[:10]
+  if not keywords:
+      keywords = ["待识别"]
+
+  return {
+      "authors": authors,
+      "impact_factor": impact_factor,
+      "publish_year": publish_year,
+      "keywords": keywords,
+  }
+
+
+def _safe_text(elem: ET.Element | None) -> str:
+  if elem is None or elem.text is None:
+      return ""
+  return elem.text.strip()
+
+
+def build_brief_sentences(title: str, summary: str, tags: list[str]) -> list[str]:
+  clean_summary = re.sub(r"\s+", " ", summary or "").strip()
+  parts = [p.strip() for p in re.split(r"[.!?]", clean_summary) if p.strip()]
+  first = parts[0] if parts else ""
+  second = parts[1] if len(parts) > 1 else ""
+  tag_text = "、".join(tags[:3]) if tags else "相关主题"
+
+  brief: list[str] = [f"论文主题：{title[:72]}。"]
+  if first:
+      brief.append(f"核心内容：{first[:120]}。")
+  if second:
+      brief.append(f"补充说明：{second[:120]}。")
+  brief.append(f"关键词条：{tag_text}。")
+  return brief[:3]
+
+
+def build_tag_relations(tags: list[str], domain: str) -> list[Dict[str, str]]:
+  uniq = list(dict.fromkeys(tags))[:4]
+  if not uniq:
+      return [{"from": domain, "to": "topic", "type": "domain-topic"}]
+  rel: list[Dict[str, str]] = []
+  if len(uniq) >= 2:
+      rel.append({"from": uniq[0], "to": uniq[1], "type": "method-support"})
+  if len(uniq) >= 3:
+      rel.append({"from": uniq[1], "to": uniq[2], "type": "evidence-validation"})
+  rel.append({"from": domain, "to": uniq[0], "type": "domain-topic"})
+  return rel[:3]
+
+
+def parse_arxiv_feed(xml_text: str, domain: str) -> list[Dict[str, Any]]:
+  root = ET.fromstring(xml_text)
+  ns = {"atom": "http://www.w3.org/2005/Atom"}
+  entries = root.findall("atom:entry", ns)
+  venue = ARXIV_DOMAIN_VENUE.get(domain, domain.upper())
+
+  items: list[Dict[str, Any]] = []
+  for idx, entry in enumerate(entries):
+      title = _safe_text(entry.find("atom:title", ns)).replace("\n", " ")
+      summary = _safe_text(entry.find("atom:summary", ns)).replace("\n", " ")
+      published = _safe_text(entry.find("atom:published", ns))
+      if published:
+          published = published[:10]
+
+      abs_url = _safe_text(entry.find("atom:id", ns))
+      pdf_url = ""
+      for link in entry.findall("atom:link", ns):
+          if link.attrib.get("title") == "pdf":
+              pdf_url = link.attrib.get("href", "").strip()
+              break
+      if not pdf_url and abs_url:
+          pdf_url = abs_url.replace("/abs/", "/pdf/") + ".pdf"
+
+      tags = []
+      for cat in entry.findall("atom:category", ns):
+          term = cat.attrib.get("term", "").strip()
+          if term:
+              tags.append(term)
+      tags = list(dict.fromkeys(tags))[:6]
+
+      paper_id = f"{venue}-{str(idx + 1).zfill(2)}"
+      items.append(
+          {
+              "id": paper_id,
+              "domain": domain,
+              "title": title,
+              "summary": summary,
+              "tags": tags,
+              "relations": build_tag_relations(tags, domain),
+              "brief": build_brief_sentences(title, summary, tags),
+              "venue": venue,
+              "publishedAt": published or "未知日期",
+              "pdfUrl": pdf_url,
+          }
+      )
+  return items
+
+
+@app.get("/api/recommendations")
+async def get_recommendations(
+  domain: str = Query("ai"),
+  limit: int = Query(10, ge=1, le=20),
+) -> Dict[str, Any]:
+  domain_key = domain.strip().lower()
+  if domain_key not in ARXIV_DOMAIN_QUERY:
+      domain_key = "ai"
+  query = quote_plus(ARXIV_DOMAIN_QUERY[domain_key])
+
+  api_path = (
+      "/api/query"
+      f"?search_query={query}"
+      "&sortBy=submittedDate&sortOrder=descending"
+      f"&max_results={limit}"
+  )
+
+  last_error = "unknown"
+  tried_sources: list[str] = []
+  for base in ARXIV_API_BASES:
+      url = f"{base}{api_path}"
+      tried_sources.append(base)
+      try:
+          async with httpx.AsyncClient(timeout=20, trust_env=False, follow_redirects=True) as client:
+              resp = await client.get(url)
+          if resp.status_code != 200:
+              last_error = f"{base}:http_{resp.status_code}"
+              continue
+          items = parse_arxiv_feed(resp.text, domain_key)
+          if not items:
+              last_error = f"{base}:parse_empty"
+              continue
+          return {
+              "domain": domain_key,
+              "items": items,
+              "source": base,
+              "tried_sources": tried_sources,
+          }
+      except Exception as e:
+          last_error = f"{base}:{str(e)[:80]}"
+          continue
+
+  return {
+      "domain": domain_key,
+      "items": [],
+      "source": "none",
+      "tried_sources": tried_sources,
+      "error": f"all_sources_failed:{last_error}",
+  }
+
+
+def extract_pdf_text(raw_bytes: bytes) -> str:
+  """Best-effort PDF text extraction from uploaded bytes."""
+  # Try pypdf first.
+  try:
+      from pypdf import PdfReader  # type: ignore
+
+      reader = PdfReader(io.BytesIO(raw_bytes))
+      parts = []
+      for page in reader.pages:
+          text = page.extract_text() or ""
+          if text.strip():
+              parts.append(text)
+      merged = "\n".join(parts).strip()
+      if merged:
+          return merged
+  except Exception:
+      pass
+
+  # Fallback to PyPDF2.
+  try:
+      from PyPDF2 import PdfReader as LegacyPdfReader  # type: ignore
+
+      reader = LegacyPdfReader(io.BytesIO(raw_bytes))
+      parts = []
+      for page in reader.pages:
+          text = page.extract_text() or ""
+          if text.strip():
+              parts.append(text)
+      merged = "\n".join(parts).strip()
+      if merged:
+          return merged
+  except Exception:
+      pass
+
+  # Fallback to PyMuPDF.
+  try:
+      import fitz  # type: ignore
+
+      doc = fitz.open(stream=raw_bytes, filetype="pdf")
+      parts = []
+      for page in doc:
+          text = page.get_text("text") or ""
+          if text.strip():
+              parts.append(text)
+      merged = "\n".join(parts).strip()
+      if merged:
+          return merged
+  except Exception:
+      pass
+
+  return ""
 
 STEP1_PROMPT_TEMPLATE = """
 Role: 你是一名高级学术研究分析助手，擅长科学论文的认识论分析与结构化拆解。
@@ -47,6 +481,12 @@ Tone: 客观、严谨、精确、学术化。
 
 STEP1_OUTPUT_SCHEMA = """{
   "title": "...",
+  "paper_meta": {
+    "authors": "...",
+    "impact_factor": "...",
+    "publish_year": "...",
+    "keywords": ["..."]
+  },
   "research_gap": "...",
   "core_methodology": "...",
   "framework_map": {
@@ -88,13 +528,16 @@ async def upload_paper(request: Request) -> Dict[str, str]:
   paper_id = str(uuid.uuid4())
   raw_bytes = await request.body()
 
-  # 绠€鍖栵細杩欓噷鏆傛椂涓嶅仛鐪熸鐨?PDF 瑙ｆ瀽锛屽彧鏄ず渚嬪彲鎵ц
   filename = request.headers.get("x-filename", "uploaded.pdf")
-  dummy_text = f"Uploaded file: {filename}. Content length: {len(raw_bytes)} bytes."
+  extracted_text = extract_pdf_text(raw_bytes)
+  if not extracted_text.strip():
+      extracted_text = f"Uploaded file: {filename}. Content length: {len(raw_bytes)} bytes."
 
   PAPERS[paper_id] = {
       "filename": filename,
-      "text": dummy_text,
+      "text": extracted_text[:300000],
+      "meta": extract_basic_meta(raw_bytes, extracted_text, filename),
+      "raw_size": len(raw_bytes),
       "step1_result": None,
       "chat_history": [],
   }
@@ -243,7 +686,8 @@ async def run_step1_with_qwen(ws: WebSocket, paper_id: str) -> None:
           continue
 
   if not streamed:
-      # 鍏滃簳锛氬鏋滄祦寮忓け璐ワ紝鍐嶈蛋涓€娆￠潪娴佸紡骞朵汉宸ュ垏鐗?      fallback_payload = dict(payload)
+      # 兜底：如果流式失败，再走一次非流式并进行分片返回
+      fallback_payload = dict(payload)
       fallback_payload["stream"] = False
       resp = None
       for headers in headers_list:
@@ -268,7 +712,7 @@ async def run_step1_with_qwen(ws: WebSocket, paper_id: str) -> None:
           await ws.send_json(
               {
                   "type": "status_change",
-                  "msg": f"ModelScope 璇锋眰澶辫触锛堟湭鏀跺埌鍝嶅簲锛夛細{last_error or '鏈煡閿欒'}",
+                  "msg": f"ModelScope 请求失败（未收到响应）：{last_error or '未知错误'}",
               }
           )
           return
@@ -310,7 +754,7 @@ async def run_step1_with_qwen(ws: WebSocket, paper_id: str) -> None:
       await ws.send_json(
           {
               "type": "status_change",
-              "msg": f"ModelScope 杩斿洖绌哄唴瀹广€俿tatus={last_status or 'unknown'} error={last_error or 'n/a'}",
+              "msg": f"ModelScope 返回空内容。status={last_status or 'unknown'} error={last_error or 'n/a'}",
           }
       )
       return
@@ -318,12 +762,29 @@ async def run_step1_with_qwen(ws: WebSocket, paper_id: str) -> None:
   result = safe_extract_json(full_text)
   normalized = normalize_step1_result(result)
   if should_localize_to_chinese(normalized):
-      await ws.send_json({"type": "status_change", "msg": "妫€娴嬪埌闈炰腑鏂囧唴瀹癸紝姝ｅ湪鑷姩杞崲涓轰腑鏂?.."})
+      await ws.send_json({"type": "status_change", "msg": "检测到非中文内容，正在自动转换为中文..."})
       localized = await localize_result_to_chinese(normalized)
       if localized:
           normalized = normalize_step1_result(localized)
+
+  base_meta = normalize_paper_meta(paper.get("meta"))
+  model_meta = normalize_paper_meta(normalized.get("paper_meta"))
+  merged_meta = dict(base_meta)
+  if model_meta.get("authors") != "待识别":
+      merged_meta["authors"] = model_meta["authors"]
+  if model_meta.get("impact_factor") != "待识别":
+      merged_meta["impact_factor"] = model_meta["impact_factor"]
+  if model_meta.get("publish_year") != "待识别":
+      merged_meta["publish_year"] = model_meta["publish_year"]
+  if model_meta.get("keywords") and model_meta["keywords"] != ["待识别"]:
+      merged_meta["keywords"] = model_meta["keywords"]
+  normalized["paper_meta"] = merged_meta
+
   if paper_id in PAPERS:
       PAPERS[paper_id]["step1_result"] = normalized
+  for card in build_step1_cards(normalized):
+      await ws.send_json({"type": "step1_card", "card": card})
+      await asyncio.sleep(0.06)
   await ws.send_json({"type": "step1_done", "data": normalized})
 
 
@@ -460,10 +921,45 @@ async def run_paper_chat(ws: WebSocket, paper_id: str, question: str) -> None:
   await ws.send_json({"type": "chat_done", "answer": answer})
 
 
+def build_step1_cards(result: Dict[str, Any]) -> list[Dict[str, str]]:
+  """Build backend-driven cards so frontend can render per-title incrementally."""
+  cards: list[Dict[str, str]] = []
+  if not isinstance(result, dict):
+      return cards
+
+  def push(card_id: str, step: str, icon: str, title: str, content: str) -> None:
+      content = (content or "").strip()
+      title = (title or "").strip()
+      if not title or not content:
+          return
+      cards.append(
+          {
+              "id": card_id,
+              "step": step,
+              "icon": icon,
+              "title": title,
+              "content": content,
+          }
+      )
+
+  push("final-title", "STEP_APPEAR", "??", "论文标题", str(result.get("title", "")))
+  push("final-gap", "STEP_EXPAND", "??", "研究缺口", str(result.get("research_gap", "")))
+  push("final-method", "STEP_FOCUS", "??", "核心方法", str(result.get("core_methodology", "")))
+
+  tree = result.get("structural_tree") or {}
+  if isinstance(tree, dict):
+      for idx, item in enumerate(tree.get("problem_definition") or []):
+          push(f"pd-{idx}", "STEP_APPEAR", "??", f"问题定义 {idx + 1}", str(item))
+      for idx, item in enumerate(tree.get("technical_approach") or []):
+          push(f"ta-{idx}", "STEP_EXPAND", "??", f"技术路径 {idx + 1}", str(item))
+      for idx, item in enumerate(tree.get("empirical_evidence") or []):
+          push(f"ee-{idx}", "STEP_FINAL", "??", f"实证证据 {idx + 1}", str(item))
+
+  return cards
+
+
 def safe_extract_json(text: str) -> Dict[str, Any]:
   """从模型返回文本中尽量提取 JSON 结构。"""
-  import re
-
   m = re.search(r"\{[\s\S]*\}", text)
   if not m:
       return {}
@@ -576,8 +1072,6 @@ def should_localize_to_chinese(result: Dict[str, Any]) -> bool:
   """判断结构化结果是否仍包含较多非中文内容。"""
   if not isinstance(result, dict):
       return False
-
-  import re
 
   text_parts = [
       str(result.get("title", "")),
@@ -780,6 +1274,7 @@ def normalize_step1_result(result: Dict[str, Any]) -> Dict[str, Any]:
   }
   result["framework_map"] = {"nodes": valid_nodes, "links": valid_links}
   result["flow_chart"] = {"title": flow_title, "steps": valid_flow_steps}
+  result["paper_meta"] = normalize_paper_meta(result.get("paper_meta"))
 
   return result
 
@@ -789,6 +1284,8 @@ if __name__ == "__main__":
 
   # 浣跨敤 8002 绔彛锛岄伩鍏嶄笌鏈満宸叉湁鏈嶅姟鍐茬獊
   uvicorn.run(app, host="0.0.0.0", port=8002, reload=False)
+
+
 
 
 
