@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Query
+﻿from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, Any
 import uuid
@@ -20,13 +20,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 璁剧疆 ModelScope API Token锛堥瓟鎼ぞ鍖虹殑 token锛?
+# 鐠佸墽鐤?ModelScope API Token閿涘牓鐡熼幖銇為崠铏规畱 token閿?
 MODELSCOPE_API_TOKEN = "ms-0be979b5-11b5-462c-ab46-afa93062154f"
 MODELSCOPE_API_URL = "https://api-inference.modelscope.cn/v1/chat/completions"
-# 灏濊瘯浣跨敤澶氭ā鎬佹ā鍨嬶紙濡傛灉鏀寔鐨勮瘽锛?
-MODEL_NAME = "deepseek-ai/DeepSeek-V3.2"  # DeepSeek 鎺ㄧ悊妯″瀷锛堝皬鍐欐牸寮忥級
+# 鐏忔繆鐦担璺ㄦ暏婢舵碍膩閹焦膩閸ㄥ绱欐俊鍌涚亯閺€瀵旈惃鍕樈閿?
+MODEL_NAME = "deepseek-ai/DeepSeek-V3.2"  # DeepSeek 閹恒劎鎮婂Ο鈥崇€烽敍鍫濈毈閸愭瑦鐗稿蹇ョ礆
 
-# 绠€鍗曞唴瀛樺瓨鍌紝鐢熶骇鐜璇锋浛鎹负鏁版嵁搴撴垨缂撳瓨
+# 缁犫偓閸楁洖鍞寸€涙ê鐡ㄩ崒绱濋悽鐔堕獓閻滅拠閿嬫禌閹硅礋閺佺増宓佹惔鎾村灗缂傛挸鐡?
 PAPERS: Dict[str, Dict[str, Any]] = {}
 
 ARXIV_DOMAIN_QUERY: Dict[str, str] = {
@@ -148,10 +148,10 @@ ARXIV_API_BASES = [
 def _split_keywords(raw: str) -> list[str]:
   if not raw:
       return []
-  items = re.split(r"[;,，；、|/]\s*|\s{2,}", raw)
+  items = re.split(r"[,;，；、/]\s*|\s{2,}", raw)
   cleaned: list[str] = []
   for item in items:
-      token = item.strip().strip(".。:：")
+      token = item.strip().strip(".。；,;")
       if not token:
           continue
       if len(token) < 2 or len(token) > 48:
@@ -292,7 +292,7 @@ def build_brief_sentences(title: str, summary: str, tags: list[str]) -> list[str
       brief.append(f"核心内容：{first[:120]}。")
   if second:
       brief.append(f"补充说明：{second[:120]}。")
-  brief.append(f"关键词条：{tag_text}。")
+  brief.append(f"关键词：{tag_text}。")
   return brief[:3]
 
 
@@ -350,7 +350,7 @@ def parse_arxiv_feed(xml_text: str, domain: str) -> list[Dict[str, Any]]:
               "relations": build_tag_relations(tags, domain),
               "brief": build_brief_sentences(title, summary, tags),
               "venue": venue,
-              "publishedAt": published or "未知日期",
+              "publishedAt": published or "鏈煡鏃ユ湡",
               "pdfUrl": pdf_url,
           }
       )
@@ -461,19 +461,19 @@ def extract_pdf_text(raw_bytes: bytes) -> str:
   return ""
 
 STEP1_PROMPT_TEMPLATE = """
-Role: 你是一名高级学术研究分析助手，擅长科学论文的认识论分析与结构化拆解。
-Tone: 客观、严谨、精确、学术化。
+Role: 浣犳槸涓€鍚嶉珮绾у鏈爺绌跺垎鏋愬姪鎵嬶紝鎿呴暱绉戝璁烘枃鐨勮璇嗚鍒嗘瀽涓庣粨鏋勫寲鎷嗚В銆?
+Tone: 瀹㈣銆佷弗璋ㄣ€佺簿纭€佸鏈寲銆?
 
-[Instruction]: 对上传论文进行分层结构化分析。
+[Instruction]: 瀵逛笂浼犺鏂囪繘琛屽垎灞傜粨鏋勫寲鍒嗘瀽銆?
 [Input Text]: {input_text}
 
 [Requirements]:
-1. 将内容拆解为“问题-方法-实验”树状结构。
-2. 识别论文聚焦的“研究缺口”。
-3. 提炼“方法框架”，不要过度简化技术术语。
-4. 严格按 JSON 结构输出，便于前端渲染。
-5. 全部字段值必须使用中文表达（包括标题、节点标签、步骤名称、步骤说明）。
-6. 禁止口语化表述；可使用“认识论、范式、量化指标”等学术术语。
+1. 灏嗗唴瀹规媶瑙ｄ负鈥滈棶棰?鏂规硶-瀹為獙鈥濇爲鐘剁粨鏋勩€?
+2. 璇嗗埆璁烘枃鑱氱劍鐨勨€滅爺绌剁己鍙ｂ€濄€?
+3. 鎻愮偧鈥滄柟娉曟鏋垛€濓紝涓嶈杩囧害绠€鍖栨妧鏈湳璇€?
+4. 涓ユ牸鎸?JSON 缁撴瀯杈撳嚭锛屼究浜庡墠绔覆鏌撱€?
+5. 鍏ㄩ儴瀛楁鍊煎繀椤讳娇鐢ㄤ腑鏂囪〃杈撅紙鍖呮嫭鏍囬銆佽妭鐐规爣绛俱€佹楠ゅ悕绉般€佹楠よ鏄庯級銆?
+6. 绂佹鍙ｈ鍖栬〃杩帮紱鍙娇鐢ㄢ€滆璇嗚銆佽寖寮忋€侀噺鍖栨寚鏍団€濈瓑瀛︽湳鏈銆?
 
 [Output Format]:
 {output_schema}
@@ -491,22 +491,22 @@ STEP1_OUTPUT_SCHEMA = """{
   "core_methodology": "...",
   "framework_map": {
     "nodes": [
-      {"id": "n1", "label": "研究问题", "kind": "problem"},
-      {"id": "n2", "label": "方法设计", "kind": "method"},
-      {"id": "n3", "label": "实验依据", "kind": "evidence"}
+      {"id": "n1", "label": "鐮旂┒闂", "kind": "problem"},
+      {"id": "n2", "label": "鏂规硶璁捐", "kind": "method"},
+      {"id": "n3", "label": "瀹為獙渚濇嵁", "kind": "evidence"}
     ],
     "links": [
-      {"from": "n1", "to": "n2", "label": "驱动"},
-      {"from": "n2", "to": "n3", "label": "由...验证"}
+      {"from": "n1", "to": "n2", "label": "椹卞姩"},
+      {"from": "n2", "to": "n3", "label": "鐢?..楠岃瘉"}
     ]
   },
   "flow_chart": {
-    "title": "方法流程",
+    "title": "鏂规硶娴佺▼",
     "steps": [
-      {"name": "问题定义", "detail": "..."},
-      {"name": "数据/知识准备", "detail": "..."},
-      {"name": "建模与优化", "detail": "..."},
-      {"name": "评估与分析", "detail": "..."}
+      {"name": "闂瀹氫箟", "detail": "..."},
+      {"name": "鏁版嵁/鐭ヨ瘑鍑嗗", "detail": "..."},
+      {"name": "寤烘ā涓庝紭鍖?, "detail": "..."},
+      {"name": "璇勪及涓庡垎鏋?, "detail": "..."}
     ]
   },
   "structural_tree": {
@@ -519,12 +519,12 @@ STEP1_OUTPUT_SCHEMA = """{
 
 @app.post("/api/paper/upload")
 async def upload_paper(request: Request) -> Dict[str, str]:
-  """鎺ユ敹璁烘枃 PDF锛岀洰鍓嶄粎淇濆瓨鏂囦欢鍚嶅苟鐢熸垚 paper_id銆?
+  """Internal helper."""
 
-  TODO:
-  - 浣跨敤 pdfminer/pymupdf 鎻愬彇鐪熷疄鏂囨湰
-  - 灏嗘彁鍙栧悗鐨勬枃鏈繚瀛樺埌 PAPERS 涓?
-  """
+  # TODO:
+  # - improve PDF extraction robustness (pdfminer/pymupdf fallback)
+  # - persist parsed paper context instead of in-memory only
+  #
   paper_id = str(uuid.uuid4())
   raw_bytes = await request.body()
 
@@ -546,7 +546,7 @@ async def upload_paper(request: Request) -> Dict[str, str]:
 
 @app.websocket("/ws/paper/{paper_id}")
 async def paper_stream(ws: WebSocket, paper_id: str) -> None:
-  """WebSocket 通道：接收前端 action 并按阶段推送模型结果。"""
+  """Internal helper."""
   await ws.accept()
   try:
       while True:
@@ -563,7 +563,7 @@ async def paper_stream(ws: WebSocket, paper_id: str) -> None:
                           "msg": f"后端分析过程出错：{str(e)}",
                       }
                   )
-          # 棰勭暀鍏朵粬闃舵锛?
+          # 妫板嫮鏆€閸忔湹绮梼鑸甸敍?
           elif action == "paper_chat":
               try:
                   question = str(msg.get("question", "")).strip()
@@ -584,29 +584,29 @@ async def paper_stream(ws: WebSocket, paper_id: str) -> None:
 
 
 async def run_step1_with_qwen(ws: WebSocket, paper_id: str) -> None:
-  """阶段一：调用模型执行结构化分析，并以流式形式推送给前端。"""
+  """Step 1: run structured analysis and stream incremental output to frontend."""
   paper = PAPERS.get(paper_id)
   if not paper:
       await ws.send_json({"type": "status_change", "msg": "未找到论文，请先上传。"})
       return
 
-  input_text = paper["text"][:20000]  # 闃叉杩囬暱
+  input_text = paper["text"][:20000]  # limit context
   prompt = STEP1_PROMPT_TEMPLATE.format(
       input_text=input_text,
       output_schema=STEP1_OUTPUT_SCHEMA,
   )
 
   await ws.send_json(
-      {"type": "status_change", "msg": "正在调用 ModelScope 进行结构化分析..."}
+      {"type": "status_change", "msg": "正在调用 ModelScope 执行结构化分析..."}
   )
 
-  # 鎸?ModelScope Chat Completions 鎺ュ彛鏍煎紡鏋勯€犺姹?
+  # 閹?ModelScope Chat Completions 閹恒儱褰涢弽鐓庣础閺嬪嫰鈧姾濮?
   payload = {
       "model": MODEL_NAME,
       "messages": [
           {
               "role": "system",
-              "content": "你是一名学术研究分析助手，请仅使用中文返回结构化分析结果。",
+              "content": "你是论文研究分析助手，请仅使用中文返回结构化分析结果。",
           },
           {
               "role": "user",
@@ -617,7 +617,7 @@ async def run_step1_with_qwen(ws: WebSocket, paper_id: str) -> None:
       "temperature": 0.1,
   }
 
-  # 灏濊瘯澶氱鍙兘鐨勮璇佹柟寮?
+  # 鐏忔繆鐦径姘遍崣鍏橀惃鍕拠浣规煙瀵?
   headers_list = [
       {
           "Authorization": f"Bearer {MODELSCOPE_API_TOKEN}",
@@ -641,7 +641,7 @@ async def run_step1_with_qwen(ws: WebSocket, paper_id: str) -> None:
 
   for headers in headers_list:
       try:
-          async with httpx.AsyncClient(timeout=120, trust_env=False) as client:
+          async with httpx.AsyncClient(timeout=35, trust_env=False) as client:
               async with client.stream(
                   "POST",
                   MODELSCOPE_API_URL,
@@ -686,13 +686,12 @@ async def run_step1_with_qwen(ws: WebSocket, paper_id: str) -> None:
           continue
 
   if not streamed:
-      # 兜底：如果流式失败，再走一次非流式并进行分片返回
-      fallback_payload = dict(payload)
+      # 鍏滃簳锛氬鏋滄祦寮忓け璐ワ紝鍐嶈蛋涓€娆￠潪娴佸紡骞惰繘琛屽垎鐗囪繑鍥?      fallback_payload = dict(payload)
       fallback_payload["stream"] = False
       resp = None
       for headers in headers_list:
           try:
-              async with httpx.AsyncClient(timeout=120, trust_env=False) as client:
+              async with httpx.AsyncClient(timeout=35, trust_env=False) as client:
                   resp = await client.post(
                       MODELSCOPE_API_URL,
                       headers=headers,
@@ -762,7 +761,7 @@ async def run_step1_with_qwen(ws: WebSocket, paper_id: str) -> None:
   result = safe_extract_json(full_text)
   normalized = normalize_step1_result(result)
   if should_localize_to_chinese(normalized):
-      await ws.send_json({"type": "status_change", "msg": "检测到非中文内容，正在自动转换为中文..."})
+      await ws.send_json({"type": "status_change", "msg": "检测到非中文内容，正在自动转为中文..."})
       localized = await localize_result_to_chinese(normalized)
       if localized:
           normalized = normalize_step1_result(localized)
@@ -789,11 +788,11 @@ async def run_step1_with_qwen(ws: WebSocket, paper_id: str) -> None:
 
 
 async def run_paper_chat(ws: WebSocket, paper_id: str, question: str) -> None:
-  """围绕当前论文的追问对话，流式返回回答。"""
-  await ws.send_json({"type": "status_change", "msg": "正在生成追问回答..."})
+  """Answer follow-up questions for the current paper via streaming."""
+  await ws.send_json({"type": "status_change", "msg": "姝ｅ湪鐢熸垚杩介棶鍥炵瓟..."})
   paper = PAPERS.get(paper_id)
   if not paper:
-      await ws.send_json({"type": "status_change", "msg": "未找到论文上下文，请先上传并分析。"})
+      await ws.send_json({"type": "status_change", "msg": "未找到论文上下文，请先上传并完成分析。"})
       await ws.send_json({"type": "chat_done", "answer": ""})
       return
   if not question:
@@ -810,18 +809,15 @@ async def run_paper_chat(ws: WebSocket, paper_id: str, question: str) -> None:
   messages = [
       {
           "role": "system",
-          "content": (
-              "你是论文研读助手。请围绕给定论文上下文回答用户追问，"
-              "使用中文、结构清晰、可执行建议优先；若信息不足请明确说明。"
-          ),
+          "content": "你是论文研究助手。请围绕给定论文上下文回答用户追问，使用中文，结构清晰，信息不足时要明确说明。",
       },
       {
           "role": "user",
           "content": (
               "【论文摘要上下文】\n"
-              f"{paper_text}\n\n"
-              "【结构化分析结果】\n"
-              f"{json.dumps(step1_result, ensure_ascii=False)}"
+              + f"{paper_text}\n\n"
+              + "【结构化分析结果】\n"
+              + f"{json.dumps(step1_result, ensure_ascii=False)}"
           ),
       },
   ]
@@ -853,7 +849,7 @@ async def run_paper_chat(ws: WebSocket, paper_id: str, question: str) -> None:
           async with httpx.AsyncClient(timeout=35, trust_env=False) as client:
               async with client.stream("POST", MODELSCOPE_API_URL, headers=headers, json=payload) as resp:
                   if resp.status_code == 401:
-                      last_error = "鉴权失败"
+                      last_error = "閴存潈澶辫触"
                       continue
                   if resp.status_code != 200:
                       raw = await resp.aread()
@@ -942,24 +938,24 @@ def build_step1_cards(result: Dict[str, Any]) -> list[Dict[str, str]]:
           }
       )
 
-  push("final-title", "STEP_APPEAR", "??", "论文标题", str(result.get("title", "")))
-  push("final-gap", "STEP_EXPAND", "??", "研究缺口", str(result.get("research_gap", "")))
-  push("final-method", "STEP_FOCUS", "??", "核心方法", str(result.get("core_methodology", "")))
+  push("final-title", "STEP_APPEAR", "\U0001F4CC", "论文标题", str(result.get("title", "")))
+  push("final-gap", "STEP_EXPAND", "\U0001F9E0", "研究缺口", str(result.get("research_gap", "")))
+  push("final-method", "STEP_FOCUS", "\U0001F6E0", "核心方法", str(result.get("core_methodology", "")))
 
   tree = result.get("structural_tree") or {}
   if isinstance(tree, dict):
       for idx, item in enumerate(tree.get("problem_definition") or []):
-          push(f"pd-{idx}", "STEP_APPEAR", "??", f"问题定义 {idx + 1}", str(item))
+          push(f"pd-{idx}", "STEP_APPEAR", "\U0001F9ED", f"问题定义 {idx + 1}", str(item))
       for idx, item in enumerate(tree.get("technical_approach") or []):
-          push(f"ta-{idx}", "STEP_EXPAND", "??", f"技术路径 {idx + 1}", str(item))
+          push(f"ta-{idx}", "STEP_EXPAND", "\U0001F527", f"技术路径 {idx + 1}", str(item))
       for idx, item in enumerate(tree.get("empirical_evidence") or []):
-          push(f"ee-{idx}", "STEP_FINAL", "??", f"实证证据 {idx + 1}", str(item))
+          push(f"ee-{idx}", "STEP_FINAL", "\U0001F4CA", f"实证证据 {idx + 1}", str(item))
 
   return cards
 
 
 def safe_extract_json(text: str) -> Dict[str, Any]:
-  """从模型返回文本中尽量提取 JSON 结构。"""
+  """Internal helper."""
   m = re.search(r"\{[\s\S]*\}", text)
   if not m:
       return {}
@@ -970,7 +966,7 @@ def safe_extract_json(text: str) -> Dict[str, Any]:
 
 
 def extract_stream_chunk(payload_obj: Dict[str, Any]) -> str:
-  """从流式返回片段中提取文本增量。"""
+  """Internal helper."""
   try:
       choice = payload_obj.get("choices", [])[0]
   except Exception:
@@ -1022,7 +1018,7 @@ def extract_stream_chunk(payload_obj: Dict[str, Any]) -> str:
 
 
 def extract_nonstream_content(payload_obj: Dict[str, Any]) -> str:
-  """兼容不同网关返回格式，提取完整文本。"""
+  """Extract non-streaming text content from different gateway response formats."""
   if not isinstance(payload_obj, dict):
       return ""
 
@@ -1069,7 +1065,7 @@ def extract_nonstream_content(payload_obj: Dict[str, Any]) -> str:
 
 
 def should_localize_to_chinese(result: Dict[str, Any]) -> bool:
-  """判断结构化结果是否仍包含较多非中文内容。"""
+  """Check whether structured result still contains mostly non-Chinese text."""
   if not isinstance(result, dict):
       return False
 
@@ -1110,16 +1106,16 @@ def should_localize_to_chinese(result: Dict[str, Any]) -> bool:
 
 
 async def localize_result_to_chinese(result: Dict[str, Any]) -> Dict[str, Any]:
-  """将结构化结果字段值翻译为中文，保持 JSON 结构不变。"""
+  """Translate structured result values to Chinese while preserving JSON schema."""
   translate_prompt = (
-      "请把下面 JSON 中所有字符串值翻译成中文，保持键名与结构完全不变，"
-      "仅返回 JSON，不要输出解释文字。\n\n"
+      "请将下面 JSON 中所有字符串值翻译为中文，并保持键名与结构不变。"
+      "仅返回 JSON，不要输出解释性文字。\n\n"
       f"{json.dumps(result, ensure_ascii=False)}"
   )
   payload = {
       "model": MODEL_NAME,
       "messages": [
-          {"role": "system", "content": "你是专业学术翻译助手，请只返回合法 JSON。"},
+          {"role": "system", "content": "你是专业学术翻译助手，请仅返回合法 JSON。"},
           {"role": "user", "content": translate_prompt},
       ],
       "stream": False,
@@ -1152,7 +1148,7 @@ async def localize_result_to_chinese(result: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def normalize_step1_result(result: Dict[str, Any]) -> Dict[str, Any]:
-  """标准化模型返回，确保框架图和流程图字段可直接渲染。"""
+  """Internal helper."""
   if not isinstance(result, dict):
       result = {}
 
@@ -1207,9 +1203,9 @@ def normalize_step1_result(result: Dict[str, Any]) -> Dict[str, Any]:
 
   if not valid_nodes:
       valid_nodes = [
-          {"id": "problem", "label": "研究问题", "kind": "problem"},
-          {"id": "method", "label": "方法设计", "kind": "method"},
-          {"id": "evidence", "label": "实验验证", "kind": "evidence"},
+          {"id": "problem", "label": "鐮旂┒闂", "kind": "problem"},
+          {"id": "method", "label": "鏂规硶璁捐", "kind": "method"},
+          {"id": "evidence", "label": "瀹為獙楠岃瘉", "kind": "evidence"},
       ]
       if problem_definition:
           valid_nodes[0]["label"] = str(problem_definition[0])[:60]
@@ -1220,8 +1216,8 @@ def normalize_step1_result(result: Dict[str, Any]) -> Dict[str, Any]:
 
   if not valid_links:
       valid_links = [
-          {"from": valid_nodes[0]["id"], "to": valid_nodes[1]["id"], "label": "问题驱动方法"},
-          {"from": valid_nodes[1]["id"], "to": valid_nodes[2]["id"], "label": "方法获得证据"},
+          {"from": valid_nodes[0]["id"], "to": valid_nodes[1]["id"], "label": "闂椹卞姩鏂规硶"},
+          {"from": valid_nodes[1]["id"], "to": valid_nodes[2]["id"], "label": "鏂规硶鑾峰緱璇佹嵁"},
       ]
 
   flow_chart = result.get("flow_chart") or {}
@@ -1282,8 +1278,10 @@ def normalize_step1_result(result: Dict[str, Any]) -> Dict[str, Any]:
 if __name__ == "__main__":
   import uvicorn
 
-  # 浣跨敤 8002 绔彛锛岄伩鍏嶄笌鏈満宸叉湁鏈嶅姟鍐茬獊
+  # 娴ｈ法鏁?8002 缁斿經閿涘矂浼╅崗宥勭瑢閺堟簚瀹稿弶婀侀張宥呭閸愯尙鐛?
   uvicorn.run(app, host="0.0.0.0", port=8002, reload=False)
+
+
 
 
 

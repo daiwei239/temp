@@ -26,3 +26,12 @@ body {
     "Noto Color Emoji",
     sans-serif;
 }
+
+.font-emoji {
+  font-family:
+    "Apple Color Emoji",
+    "Segoe UI Emoji",
+    "Noto Color Emoji",
+    "Twemoji Mozilla",
+    sans-serif;
+}

@@ -199,6 +199,22 @@ const detailToBullets = (detail?: string) => {
     .slice(0, 3);
 };
 
+const fallbackCardIcon = (item: DisplayCard) => {
+  const raw = (item.icon || "").trim();
+  if (raw && raw !== "??") return raw;
+  const title = (item.title || "").toLowerCase();
+  if (title.includes("论文标题")) return "📌";
+  if (title.includes("研究缺口")) return "🧠";
+  if (title.includes("核心方法")) return "🛠️";
+  if (title.includes("问题定义")) return "🧭";
+  if (title.includes("技术路径")) return "🔧";
+  if (title.includes("实证证据")) return "📊";
+  if (item.step === "STEP_APPEAR") return "📌";
+  if (item.step === "STEP_EXPAND") return "🔧";
+  if (item.step === "STEP_FOCUS") return "🛠️";
+  return "📊";
+};
+
 const StreamingContainer = ({
   streamText,
   step1Data,
@@ -350,7 +366,7 @@ const StreamingContainer = ({
             className={`rounded-xl border px-5 py-4 ${stageMeta[step].itemClass}`}
           >
             <h4 className="text-lg font-semibold tracking-wide text-slate-800 md:text-xl">
-              <span className="mr-2">{item.icon}</span>
+              <span className="mr-2 font-emoji">{fallbackCardIcon(item)}</span>
               <TypewriterText text={item.title} speed={22} className="text-blue-700" />
             </h4>
             <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-700">
