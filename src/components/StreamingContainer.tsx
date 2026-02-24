@@ -350,8 +350,10 @@ const StreamingContainer = ({
 
   useEffect(() => {
     if (!hasPaper) return;
+    // Keep pinned to bottom only while streaming.
+    if (step1Done) return;
     bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
-  }, [typedChars, cards.length, streamText.length, hasPaper]);
+  }, [typedChars, cards.length, streamText.length, hasPaper, step1Done]);
 
   const renderItems = (items: DisplayCard[], step: StepKind) => (
     <div className="space-y-3">

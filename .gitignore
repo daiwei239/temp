@@ -1,1 +1,9 @@
 node_modules
+dist/
+*.log
+*.db
+*.db-journal
+backend/.env
+backend/__pycache__/
+backend/*.pyc
+__pycache__/

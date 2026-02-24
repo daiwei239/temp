@@ -4,7 +4,7 @@ import { useDropzone } from "react-dropzone";
 import { getApiBaseUrl } from "../lib/backendUrl";
 
 interface UploadPanelProps {
-  onUploaded: (paperId: string) => void;
+  onUploaded: (paperId: string, fileName?: string) => void;
   onStartAnalyze: () => void;
   connected: boolean;
   hasPaper: boolean;
@@ -36,7 +36,7 @@ const UploadPanel = ({
           body: file,
         });
         const data = await response.json();
-        onUploaded(data.paper_id);
+        onUploaded(data.paper_id, file.name);
       } finally {
         setIsUploading(false);
       }
