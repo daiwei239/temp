@@ -686,7 +686,8 @@ async def run_step1_with_qwen(ws: WebSocket, paper_id: str) -> None:
           continue
 
   if not streamed:
-      # 鍏滃簳锛氬鏋滄祦寮忓け璐ワ紝鍐嶈蛋涓€娆￠潪娴佸紡骞惰繘琛屽垎鐗囪繑鍥?      fallback_payload = dict(payload)
+      # Fallback: if streaming fails, retry once with non-stream mode and chunk it to frontend.
+      fallback_payload = dict(payload)
       fallback_payload["stream"] = False
       resp = None
       for headers in headers_list:

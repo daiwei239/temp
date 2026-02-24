@@ -120,7 +120,7 @@ const PaperChatDock = ({ messages, connected, hasPaper, sending, showInput, onSe
             <button
               type="submit"
               disabled={!canSend}
-              className="h-14 rounded-xl bg-blue-600 px-5 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+              className="btn-primary h-14 rounded-xl bg-[#8DAFDD] px-5 text-sm font-medium text-[#6e4a3a] transition hover:bg-[#7FA2D2] disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               {sending ? "回答中..." : "发送"}
             </button>

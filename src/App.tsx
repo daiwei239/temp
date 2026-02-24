@@ -61,11 +61,11 @@ interface RelatedAuthorRec {
 
 type ViewKey = "home" | "search" | "recommend" | "polish";
 
-const navItems: Array<{ key: ViewKey; label: string }> = [
-  { key: "home", label: "首页" },
-  { key: "search", label: "搜索" },
-  { key: "recommend", label: "推荐" },
-  { key: "polish", label: "文字润色" },
+const navItems: Array<{ key: ViewKey; label: string; icon: string; hint: string }> = [
+  { key: "home", label: "首页", icon: "⌂", hint: "Dashboard" },
+  { key: "search", label: "搜索", icon: "⌕", hint: "Discovery" },
+  { key: "recommend", label: "推荐", icon: "★", hint: "Insights" },
+  { key: "polish", label: "文字润色", icon: "✎", hint: "Writing" },
 ];
 
 type DisciplineKey =
@@ -339,7 +339,7 @@ const SearchPage = () => {
         />
         <button
           type="button"
-          className="rounded-xl bg-blue-600 px-6 py-3 text-sm font-medium text-white transition hover:bg-blue-700"
+          className="btn-primary rounded-xl bg-[#8DAFDD] px-6 py-3 text-sm font-medium text-[#6e4a3a] transition hover:bg-[#7FA2D2]"
         >
           立即搜索
         </button>
@@ -440,10 +440,10 @@ const RecommendPage = () => {
                 key={item.key}
                 type="button"
                 onClick={() => setActiveDiscipline(item.key)}
-                className={`rounded-full border px-3 py-1.5 text-sm transition ${
+                className={`discipline-chip rounded-full border px-3 py-1.5 text-sm transition-all duration-200 ${
                   active
-                    ? "border-slate-300 bg-white text-slate-900 shadow-sm"
-                    : "border-slate-200 bg-white/70 text-slate-600 hover:bg-white"
+                    ? "discipline-chip-active border-[#cbc4be] bg-[#f7f4f1] text-[#2f2b28]"
+                    : "discipline-chip-inactive border-[#e0dad5] bg-white/70 text-slate-600 hover:border-[#cfc7c0] hover:bg-[#f9f7f4] hover:text-slate-800"
                 }`}
               >
                 {item.label}
@@ -461,8 +461,10 @@ const RecommendPage = () => {
               key={venue.id}
               type="button"
               onClick={() => setActiveDomain(venue.id)}
-              className={`rounded-2xl border p-4 text-left transition ${
-                active ? "border-slate-300 bg-white shadow-sm" : "border-slate-200 bg-white/70 hover:bg-white"
+              className={`venue-tile rounded-2xl border p-4 text-left transition-all duration-200 ${
+                active
+                  ? "venue-tile-active border-[#cbc4be] bg-[#f8f6f3]"
+                  : "venue-tile-inactive border-[#e3ddd8] bg-[#fbfaf8] hover:-translate-y-[1px] hover:border-[#cfc7c0] hover:bg-white hover:shadow-[0_8px_18px_rgba(43,35,28,0.08)]"
               }`}
             >
               <div className={`mb-3 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br text-lg ${venue.accent}`}>
@@ -577,48 +579,66 @@ const RecommendPage = () => {
             </div>
 
             <div className="space-y-3">
-              {scholars.map((person, index) => (
-                <article key={`${activeDomain}-${person.name}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-800">{person.name}</p>
-                      <p className="mt-0.5 text-xs text-slate-500">{person.affiliation}</p>
-                    </div>
-                    <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs text-slate-500">#{index + 1}</span>
-                  </div>
+              {scholars.map((person, index) => {
+                const normalizedName = person.name.trim();
+                const initials = normalizedName.includes(" ")
+                  ? normalizedName
+                      .split(/\s+/)
+                      .filter(Boolean)
+                      .slice(0, 2)
+                      .map((token) => token[0])
+                      .join("")
+                      .toUpperCase()
+                  : normalizedName.slice(0, 2).toUpperCase();
 
-                  <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-                    <div className="rounded-md bg-white px-2 py-1">
-                      <p className="text-slate-500">引用量</p>
-                      <p className="font-semibold text-slate-700">{person.citations.toLocaleString()}</p>
+                return (
+                  <article key={`${activeDomain}-${person.name}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <span className="scholar-avatar inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold">
+                          {initials}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-slate-800">{person.name}</p>
+                          <p className="mt-0.5 truncate text-xs text-slate-500">{person.affiliation}</p>
+                        </div>
+                      </div>
+                      <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs text-slate-500">#{index + 1}</span>
                     </div>
-                    <div className="rounded-md bg-white px-2 py-1">
-                      <p className="text-slate-500">h-index</p>
-                      <p className="font-semibold text-slate-700">{person.hIndex}</p>
+
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                      <div className="rounded-md bg-white px-2 py-1">
+                        <p className="text-slate-500">引用量</p>
+                        <p className="font-semibold text-slate-700">{person.citations.toLocaleString()}</p>
+                      </div>
+                      <div className="rounded-md bg-white px-2 py-1">
+                        <p className="text-slate-500">h-index</p>
+                        <p className="font-semibold text-slate-700">{person.hIndex}</p>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {person.tags.map((tag) => (
-                      <span
-                        key={`${person.name}-${tag}`}
-                        className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-600"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {person.tags.map((tag) => (
+                        <span
+                          key={`${person.name}-${tag}`}
+                          className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-600"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
 
-                  <a
-                    href={buildScholarMirrorUrl(person.name)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-2 inline-flex text-xs font-medium text-blue-700 hover:text-blue-800"
-                  >
-                    谷歌学术镜像
-                  </a>
-                </article>
-              ))}
+                    <a
+                      href={buildScholarMirrorUrl(person.name)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-2 inline-flex text-xs font-medium text-blue-700 hover:text-blue-800"
+                    >
+                      谷歌学术镜像
+                    </a>
+                  </article>
+                );
+              })}
             </div>
           </section>
         </aside>
@@ -634,17 +654,17 @@ const PolishPage = () => {
       <p className="mt-2 text-slate-600">粘贴段落后获取学术表达优化建议，包括术语统一、逻辑衔接与语气规范。</p>
 
       <div className="mt-6 grid gap-5 md:grid-cols-2">
-        <label className="block rounded-2xl border border-slate-200 bg-white p-4">
+        <label className="polish-input-wrap block rounded-2xl border border-slate-200 bg-white p-4">
           <span className="text-sm font-medium text-slate-700">原文输入</span>
           <textarea
-            className="mt-3 h-40 w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+            className="polish-input mt-3 h-40 w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#dcc9b8] focus:ring-2 focus:ring-[#F8EFE7]"
             placeholder="请输入需要润色的学术段落..."
           />
         </label>
 
-        <article className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-          <p className="text-sm font-medium text-emerald-800">润色后（示例）</p>
-          <p className="mt-3 text-sm leading-7 text-slate-700">
+        <article className="polish-result rounded-2xl border border-[#e7d9cc] bg-[#F8EFE7] p-4">
+          <p className="polish-result-title text-sm font-medium text-[#8a5548]">润色后（示例）</p>
+          <p className="polish-result-text mt-3 text-sm leading-7 text-slate-700">
             To improve robustness in long-context reasoning, we introduce a graph-structured retrieval module that explicitly models entity-level relations and evidence paths.
             Experimental results indicate that this design consistently improves answer faithfulness while preserving response efficiency.
           </p>
@@ -654,7 +674,7 @@ const PolishPage = () => {
       <div className="mt-4 flex justify-end">
         <button
           type="button"
-          className="rounded-xl bg-emerald-600 px-6 py-3 text-sm font-medium text-white transition hover:bg-emerald-700"
+          className="btn-primary rounded-xl bg-[#8DAFDD] px-6 py-3 text-sm font-medium text-[#6e4a3a] transition hover:bg-[#7FA2D2]"
         >
           开始润色
         </button>
@@ -666,6 +686,7 @@ const PolishPage = () => {
 const HomePage = () => {
   const [paperId, setPaperId] = useState<string | null>(null);
   const [statusText, setStatusText] = useState("等待上传论文...");
+  const [analysisStarted, setAnalysisStarted] = useState(false);
   const [step1Text, setStep1Text] = useState("");
   const [step1Done, setStep1Done] = useState(false);
   const [step1Data, setStep1Data] = useState<StepResult | null>(null);
@@ -840,6 +861,7 @@ const HomePage = () => {
 
   const handleUploaded = (newPaperId: string) => {
     setPaperId(newPaperId);
+    setAnalysisStarted(false);
     setStep1Text("");
     setStep1Data(null);
     setStep1Cards([]);
@@ -851,6 +873,7 @@ const HomePage = () => {
 
   const handleStartAnalyze = () => {
     if (!paperId) return;
+    setAnalysisStarted(true);
     setStep1Text("");
     setStep1Data(null);
     setStep1Cards([]);
@@ -873,19 +896,16 @@ const HomePage = () => {
 
   return (
     <div className="pb-32">
-      <section className="mb-10 rounded-3xl border border-slate-200 bg-slate-50 p-8">
-        <p className="text-sm font-medium uppercase tracking-[0.12em] text-blue-700/90">学术助手</p>
-        <h1 className="mt-2 text-3xl font-semibold leading-tight text-slate-800 md:text-4xl">论文结构化分析工作台</h1>
-        <p className="mt-4 max-w-3xl text-base leading-7 text-slate-600">分析结果将以流式方式展示，并自动整理为结构化卡片，便于逐步阅读和理解。</p>
-      </section>
-
-      <UploadPanel
-        connected={connected}
-        hasPaper={Boolean(paperId)}
-        statusText={statusText}
-        onUploaded={handleUploaded}
-        onStartAnalyze={handleStartAnalyze}
-      />
+      {!analysisStarted ? (
+        <UploadPanel
+          connected={connected}
+          hasPaper={Boolean(paperId)}
+          statusText={statusText}
+          compact={analysisStarted}
+          onUploaded={handleUploaded}
+          onStartAnalyze={handleStartAnalyze}
+        />
+      ) : null}
 
       <StreamingContainer
         streamText={step1Text}
@@ -970,8 +990,44 @@ const HomePage = () => {
     </div>
   );
 };
+
+const BrandIcon = () => {
+  return (
+    <span className="app-brand-icon inline-flex h-8 w-8 items-center justify-center rounded-full">
+      <svg viewBox="0 0 28 28" width="22" height="22" aria-hidden="true">
+        <circle cx="14" cy="14" r="13" fill="#0a0f16" />
+        <circle cx="14" cy="14" r="8" fill="none" stroke="#8DAFDD" strokeWidth="2" />
+        <circle cx="11" cy="11" r="1.6" fill="#F6F9FF" />
+        <circle cx="17" cy="11" r="1.6" fill="#F6F9FF" />
+        <circle cx="14" cy="17" r="1.8" fill="#F6F9FF" />
+        <path d="M11 11 L17 11 L14 17 Z" fill="none" stroke="#8DAFDD" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="20.5" cy="7.5" r="1.4" fill="#E4A482" />
+      </svg>
+    </span>
+  );
+};
+
 const App = () => {
   const [activeView, setActiveView] = useState<ViewKey>("home");
+  const [darkMode, setDarkMode] = useState(false);
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem("peragent-dark-mode");
+    if (saved === "1") {
+      setDarkMode(true);
+      return;
+    }
+    if (saved === "0") {
+      setDarkMode(false);
+      return;
+    }
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    setDarkMode(prefersDark);
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("peragent-dark-mode", darkMode ? "1" : "0");
+  }, [darkMode]);
 
   const CurrentView = useMemo(() => {
     if (activeView === "search") return <SearchPage />;
@@ -980,76 +1036,135 @@ const App = () => {
     return <HomePage />;
   }, [activeView]);
 
+  const viewMeta: Record<ViewKey, { title: string; subtitle: string }> = {
+    home: {
+      title: "ANALYTICAL BOARD",
+      subtitle: "论文上传、结构化解析与流式阅读统一工作台",
+    },
+    search: {
+      title: "RESEARCH SEARCH",
+      subtitle: "按学科与方向探索高质量研究与作者",
+    },
+    recommend: {
+      title: "SMART RECOMMEND",
+      subtitle: "基于方向标签与语义关联生成推荐列表",
+    },
+    polish: {
+      title: "WRITING POLISH",
+      subtitle: "将技术段落优化为更规范的学术表达",
+    },
+  };
+
+  const activeMeta = viewMeta[activeView];
+
   return (
-    <>
-      <header className="fixed inset-x-0 top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur-md">
-        <div className="mx-auto flex h-20 w-full max-w-[1680px] items-center justify-between px-6 md:px-10">
-          <div className="flex items-center gap-10">
-            <h1 className="text-3xl font-semibold tracking-tight text-slate-900 [font-family:Arial,sans-serif]">PerAgent</h1>
-            <nav>
-              <ul className="flex items-center gap-2">
+    <div data-theme={darkMode ? "dark" : "light"} className="app-root min-h-screen bg-[#ece9e7]">
+      <div className="app-shell flex min-h-screen w-full overflow-hidden bg-[#ece9e7]">
+        <aside className="app-sidebar w-full shrink-0 border-b border-[#d8d2cc] bg-[#e2ded9] md:w-[248px] md:border-b-0 md:border-r">
+          <div className="flex h-full flex-col p-5 md:p-6">
+            <div className="flex items-center gap-2">
+              <BrandIcon />
+              <div>
+                <p className="app-brand text-sm font-semibold tracking-[0.02em] text-[#181818]">PERAGENT</p>
+                <p className="app-brand-sub text-[11px] uppercase tracking-[0.1em] text-[#7f7873]">Research OS</p>
+              </div>
+            </div>
+
+            <nav className="mt-7">
+              <ul className="grid grid-cols-2 gap-2 md:grid-cols-1">
                 {navItems.map((item) => {
                   const isActive = activeView === item.key;
                   return (
-                    <li key={item.key} className="relative">
-                      {isActive ? (
-                        <motion.span
-                          layoutId="notebook-nav-active"
-                          className="absolute inset-0 rounded-full border border-slate-300/90 bg-slate-200/90"
-                          transition={{ type: "spring", stiffness: 420, damping: 34 }}
-                        />
-                      ) : null}
-                      <motion.button
+                    <li key={item.key}>
+                      <button
                         type="button"
-                        whileTap={{ scale: 0.97 }}
-                        transition={{ type: "spring", stiffness: 520, damping: 36 }}
                         onClick={() => setActiveView(item.key)}
-                        className={`relative z-10 rounded-full px-6 py-2 text-sm font-medium transition ${
+                        className={[
+                          "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition",
                           isActive
-                            ? "text-slate-900"
-                            : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                        }`}
+                            ? "nav-active border-[#0f0f0f] bg-[#0f0f0f] text-[#ECECEC]"
+                            : "nav-inactive border-transparent bg-transparent text-[#43403d] hover:border-[#d5cfca] hover:bg-white/70",
+                        ].join(" ")}
                       >
-                        {item.label}
-                      </motion.button>
+                        <span
+                          className={[
+                            "inline-flex h-6 w-6 items-center justify-center rounded-md text-sm",
+                            isActive ? "nav-icon-active bg-white/15 text-[#ECECEC]" : "nav-icon-inactive bg-[#ebe7e4] text-[#3f3a36]",
+                          ].join(" ")}
+                        >
+                          {item.icon}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-semibold">{item.label}</span>
+                          <span className={`block truncate text-[10px] ${isActive ? "nav-hint-active text-[#ECECEC]/65" : "text-[#8b847f]"}`}>
+                            {item.hint}
+                          </span>
+                        </span>
+                      </button>
                     </li>
                   );
                 })}
               </ul>
             </nav>
-          </div>
 
-          <div className="hidden items-center gap-3 md:flex">
-            <button
-              type="button"
-              className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
-            >
-              设置
-            </button>
-            <button
-              type="button"
-              className="rounded-full bg-slate-900 px-5 py-2 text-sm font-medium text-white hover:bg-slate-800"
-            >
-              新建
-            </button>
+            <div className="mt-auto pt-6">
+              <div className="theme-switch-card rounded-xl border border-[#ddd7d2] bg-[#ebe7e3] p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="theme-switch-title truncate text-sm font-semibold text-[#2a2522]">深色模式</p>
+                    <p className="theme-switch-desc mt-0.5 text-[11px] text-[#6f6863]">
+                      {darkMode ? "已开启，降低眩光" : "已关闭"}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="切换深色模式"
+                    aria-pressed={darkMode}
+                    onClick={() => setDarkMode((prev) => !prev)}
+                    className={[
+                      "theme-toggle-track relative inline-flex h-7 w-12 items-center rounded-full border transition",
+                      darkMode ? "border-[#4b5f78] bg-[#233145]" : "border-[#cfc7c0] bg-[#e7e2dd]",
+                    ].join(" ")}
+                  >
+                    <span
+                      className={[
+                        "theme-toggle-thumb inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] transition-transform",
+                        darkMode ? "translate-x-6 bg-[#dbe7f8] text-[#223147]" : "translate-x-1 bg-[#f6f2ee] text-[#7b726c]",
+                      ].join(" ")}
+                    >
+                      {darkMode ? "🌙" : "☀"}
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
+        </aside>
+
+        <div className="flex min-h-0 flex-1 flex-col">
+          <header className="app-header app-glass-header border-b border-[#d8d2cc] bg-[#ece9e7]/90 px-4 py-4 backdrop-blur md:px-7 md:py-5">
+            <div className="flex items-center justify-between">
+              <h1 className="app-title text-3xl font-bold tracking-tight text-[#111111]">{activeMeta.title}</h1>
+            </div>
+            <p className="app-subtitle mt-2 text-sm text-[#6f6863]">{activeMeta.subtitle}</p>
+          </header>
+
+          <main className="min-h-0 flex-1 overflow-y-auto px-4 py-5 md:px-7 md:py-6">
+            <AnimatePresence mode="wait">
+              <motion.section
+                key={activeView}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.24, ease: "easeOut" }}
+              >
+                {CurrentView}
+              </motion.section>
+            </AnimatePresence>
+          </main>
         </div>
-      </header>
-
-      <main className="mx-auto min-h-screen w-full max-w-6xl px-6 pb-12 pt-28 md:px-10">
-        <AnimatePresence mode="wait">
-          <motion.section
-            key={activeView}
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.24, ease: "easeOut" }}
-          >
-            {CurrentView}
-          </motion.section>
-        </AnimatePresence>
-      </main>
-    </>
+      </div>
+    </div>
   );
 };
 

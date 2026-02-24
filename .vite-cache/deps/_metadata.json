@@ -1,58 +1,58 @@
 {
-  "hash": "45f91b79",
-  "configHash": "e6e48760",
-  "lockfileHash": "5701df25",
-  "browserHash": "d7803f93",
+  "hash": "3a4600da",
+  "configHash": "b7edfd18",
+  "lockfileHash": "b9935096",
+  "browserHash": "8075b338",
   "optimized": {
     "react": {
       "src": "../../node_modules/react/index.js",
       "file": "react.js",
-      "fileHash": "9509ac9f",
+      "fileHash": "b6514301",
       "needsInterop": true
     },
     "react-dom": {
       "src": "../../node_modules/react-dom/index.js",
       "file": "react-dom.js",
-      "fileHash": "88d5e111",
+      "fileHash": "d6eb5783",
       "needsInterop": true
     },
     "react/jsx-dev-runtime": {
       "src": "../../node_modules/react/jsx-dev-runtime.js",
       "file": "react_jsx-dev-runtime.js",
-      "fileHash": "28eb9e65",
+      "fileHash": "c4542e58",
       "needsInterop": true
     },
     "react/jsx-runtime": {
       "src": "../../node_modules/react/jsx-runtime.js",
       "file": "react_jsx-runtime.js",
-      "fileHash": "f18af40d",
+      "fileHash": "b0a516af",
       "needsInterop": true
     },
     "framer-motion": {
       "src": "../../node_modules/framer-motion/dist/es/index.mjs",
       "file": "framer-motion.js",
-      "fileHash": "04ea4c00",
+      "fileHash": "13b4ff4a",
       "needsInterop": false
     },
     "react-dom/client": {
       "src": "../../node_modules/react-dom/client.js",
       "file": "react-dom_client.js",
-      "fileHash": "58c71d2a",
+      "fileHash": "8ae651bd",
       "needsInterop": true
     },
     "react-dropzone": {
       "src": "../../node_modules/react-dropzone/dist/es/index.js",
       "file": "react-dropzone.js",
-      "fileHash": "5c534d77",
+      "fileHash": "bb0f6730",
       "needsInterop": false
     }
   },
   "chunks": {
-    "chunk-E7PTPIRV": {
-      "file": "chunk-E7PTPIRV.js"
-    },
     "chunk-43NWUZPV": {
       "file": "chunk-43NWUZPV.js"
+    },
+    "chunk-E7PTPIRV": {
+      "file": "chunk-E7PTPIRV.js"
     },
     "chunk-5HAYVTYH": {
       "file": "chunk-5HAYVTYH.js"

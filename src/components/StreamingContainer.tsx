@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import MotionCard, { type StepKind } from "./MotionCard";
+import type { StepKind } from "./MotionCard";
 
 interface StepResult {
   title?: string;
@@ -151,23 +151,57 @@ const stageMeta: Record<
   STEP_APPEAR: {
     title: "阶段一 初步呈现",
     subtitle: "问题线索逐步出现",
-    itemClass: "bg-blue-50/60 border-blue-100",
+    itemClass: "bg-[#f8f8f6] border-[#e9e5e0]",
   },
   STEP_EXPAND: {
     title: "阶段二 路径展开",
     subtitle: "方法内容开始细化",
-    itemClass: "bg-cyan-50/60 border-cyan-100",
+    itemClass: "bg-[#f8f8f6] border-[#e9e5e0]",
   },
   STEP_FOCUS: {
     title: "阶段三 重点聚焦",
     subtitle: "关键结论被突出展示",
-    itemClass: "bg-indigo-50/60 border-indigo-100",
+    itemClass: "bg-[#f8f8f6] border-[#e9e5e0]",
   },
   STEP_FINAL: {
     title: "阶段四 最终结果",
     subtitle: "分析结果汇总收束",
-    itemClass: "bg-emerald-50/60 border-emerald-100",
+    itemClass: "bg-[#f8f8f6] border-[#e9e5e0]",
   },
+};
+
+type StageTabKey = "phase_core" | "phase_path" | "phase_detail";
+
+const stageTabs: Array<{
+  key: StageTabKey;
+  label: string;
+  shortLabel: string;
+  subtitle: string;
+}> = [
+  {
+    key: "phase_core",
+    label: "阶段一：核心提取",
+    shortLabel: "核心提取",
+    subtitle: "提取论文问题定义与核心对象",
+  },
+  {
+    key: "phase_path",
+    label: "阶段二：路径展开",
+    shortLabel: "路径展开",
+    subtitle: "展开方法链路与技术实现路径",
+  },
+  {
+    key: "phase_detail",
+    label: "阶段三：深入细节",
+    shortLabel: "深入细节",
+    subtitle: "聚焦关键证据与细节结论",
+  },
+];
+
+const stagePanelTone: Record<StageTabKey, string> = {
+  phase_core: "border-[#e8e4df] bg-[#f3f2f0]",
+  phase_path: "border-[#e8e4df] bg-[#f3f2f0]",
+  phase_detail: "border-[#e8e4df] bg-[#f3f2f0]",
 };
 
 const pickNodeEmoji = (kind?: string, label?: string) => {
@@ -231,6 +265,7 @@ const StreamingContainer = ({
   const [displayedProgress, setDisplayedProgress] = useState(0);
   const [typedChars, setTypedChars] = useState(0);
   const [diagramCollapsed, setDiagramCollapsed] = useState(false);
+  const [activeStage, setActiveStage] = useState<StageTabKey>("phase_core");
 
   const finalCards = useMemo(() => {
     if (step1Cards.length > 0) return step1Cards;
@@ -286,7 +321,6 @@ const StreamingContainer = ({
     : step1Done
       ? finalCards.slice(0, displayedFinalCount)
       : [];
-  const streamPreview = streamText.slice(0, typedChars);
 
   const grouped = useMemo(
     () => ({
@@ -297,6 +331,47 @@ const StreamingContainer = ({
     }),
     [cards],
   );
+
+  const stageCards = useMemo<Record<StageTabKey, DisplayCard[]>>(
+    () => ({
+      phase_core: grouped.STEP_APPEAR,
+      phase_path: grouped.STEP_EXPAND,
+      phase_detail: [...grouped.STEP_FOCUS, ...grouped.STEP_FINAL],
+    }),
+    [grouped],
+  );
+
+  const hasAnyStageCards = useMemo(
+    () => stageTabs.some((tab) => stageCards[tab.key].length > 0),
+    [stageCards],
+  );
+
+  const activeStageMeta = useMemo(
+    () => stageTabs.find((tab) => tab.key === activeStage) ?? stageTabs[0],
+    [activeStage],
+  );
+
+  const activeStageCards = stageCards[activeStageMeta.key];
+
+  const currentStageIndex = useMemo(() => {
+    if (!hasPaper) return -1;
+    if (step1Done) return stageTabs.length - 1;
+    if (stageCards.phase_detail.length > 0) return 2;
+    if (stageCards.phase_path.length > 0) return 1;
+    return 0;
+  }, [hasPaper, stageCards.phase_detail.length, stageCards.phase_path.length, step1Done]);
+
+  useEffect(() => {
+    if (!hasPaper) {
+      setActiveStage("phase_core");
+    }
+  }, [hasPaper]);
+
+  useEffect(() => {
+    if (!step1Done && step1Cards.length === 0 && streamText.length === 0) {
+      setActiveStage("phase_core");
+    }
+  }, [step1Done, step1Cards.length, streamText.length]);
 
   const flowVisibleCount = useMemo(() => {
     if (!step1Done || flowSteps.length === 0) return 0;
@@ -353,7 +428,7 @@ const StreamingContainer = ({
     bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
   }, [typedChars, cards.length, streamText.length, hasPaper]);
 
-  const renderItems = (items: DisplayCard[], step: StepKind) => (
+  const renderItems = (items: DisplayCard[]) => (
     <div className="space-y-3">
       <AnimatePresence initial={false}>
         {items.map((item) => (
@@ -363,11 +438,11 @@ const StreamingContainer = ({
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.32, ease: easeCurve }}
-            className={`rounded-xl border px-5 py-4 ${stageMeta[step].itemClass}`}
+            className={`rounded-xl border px-5 py-4 ${stageMeta[item.step].itemClass}`}
           >
             <h4 className="text-lg font-semibold tracking-wide text-slate-800 md:text-xl">
               <span className="mr-2 font-emoji">{fallbackCardIcon(item)}</span>
-              <TypewriterText text={item.title} speed={22} className="text-blue-700" />
+              <TypewriterText text={item.title} speed={22} className="text-[#2f2b28]" />
             </h4>
             <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-700">
               <TypewriterText text={item.content} speed={12} />
@@ -378,9 +453,6 @@ const StreamingContainer = ({
     </div>
   );
 
-  const stepOrder: StepKind[] = ["STEP_APPEAR", "STEP_EXPAND", "STEP_FOCUS", "STEP_FINAL"];
-  const visibleSteps = hasPaper ? stepOrder.filter((step) => grouped[step].length > 0) : [];
-
   const hasDiagramData = frameworkNodes.length > 0 || flowSteps.length > 0;
   const showRightPanel = step1Done;
 
@@ -389,12 +461,6 @@ const StreamingContainer = ({
       setDiagramCollapsed(false);
     }
   }, [showRightPanel]);
-
-  const progressTrackHeight = useMemo(() => {
-    const base = 220;
-    const growth = (Math.max(1, cards.length) + flowVisibleCount) * 20;
-    return Math.max(base, Math.min(620, base + growth));
-  }, [cards.length, flowVisibleCount]);
 
   const visibleFrameworkNodes = useMemo(
     () => frameworkNodes.slice(0, frameworkVisibleCount),
@@ -453,53 +519,139 @@ const StreamingContainer = ({
 
   const gridClass = showRightPanel
     ? diagramCollapsed
-      ? "mt-8 grid gap-6 md:grid-cols-[52px_minmax(0,1fr)_56px]"
-      : "mt-8 grid gap-6 md:grid-cols-[52px_minmax(0,1fr)_380px]"
-    : "mt-8 grid gap-6 md:grid-cols-[52px_minmax(0,1fr)]";
+      ? "mt-6 grid gap-6 md:grid-cols-[minmax(0,1fr)_56px]"
+      : "mt-6 grid gap-6 md:grid-cols-[minmax(0,1fr)_380px]"
+    : "mt-6";
 
   return (
-    <section className={gridClass}>
-      <aside className="md:sticky md:top-28 md:h-fit">
-        <div className="flex flex-col items-center gap-3">
-          <p className="text-xs font-semibold text-slate-500">{progress}%</p>
-          <div
-            className="relative w-2 overflow-hidden rounded-full bg-slate-200 transition-all duration-500"
-            style={{ height: `${progressTrackHeight}px` }}
-          >
+    <section>
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">进度导航</p>
+            <p className="text-sm font-semibold text-slate-800">Horizontal Stepper</p>
+          </div>
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600">
+            {progress}%
+          </span>
+        </div>
+
+        <div className="mt-4 rounded-xl border border-[#dcecff] bg-[#f8fcff] px-3 py-2.5 md:px-4">
+          <div className="relative h-7">
+            <span className="absolute left-0 top-0 text-[13px] tracking-[0.08em] text-[#8bc7f4]">
+              {hasPaper ? "Analysis loading" : "Illustrative mathematics"}
+            </span>
+            <span className="absolute left-1/2 top-0 -translate-x-1/2 text-sm font-semibold text-[#73bdf2]">
+              {progress}%
+            </span>
+            <div className="absolute inset-x-0 top-5 h-px bg-[#cde6fb]" />
             <motion.div
-              className="absolute top-0 w-full rounded-full bg-blue-600"
-              initial={{ height: 0, transformOrigin: "top" }}
-              animate={{ height: `${displayedProgress}%` }}
-              transition={{ duration: 0.5, ease: easeCurve }}
+              className="absolute left-0 top-5 h-px bg-[#7dc4f4]"
+              initial={{ width: 0 }}
+              animate={{ width: `${displayedProgress}%` }}
+              transition={{ duration: 0.45, ease: easeCurve }}
             />
+            <div className="absolute right-0 top-1 h-5 border-r border-dashed border-[#acd4f4]" />
           </div>
         </div>
-      </aside>
 
-      <div className="space-y-5">
-        {!hasPaper ? null : (!step1Done && step1Cards.length === 0) ? (
-          <motion.article
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4"
-          >
-            <h3 className="text-sm font-semibold text-slate-700">实时生成中</h3>
-            <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-700">
-              {streamPreview || "正在等待模型返回内容..."}
-              <span className="ml-1 inline-block h-4 w-[2px] animate-pulse bg-slate-400 align-middle" />
-            </p>
-          </motion.article>
-        ) : visibleSteps.length === 0 ? (
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm text-slate-600">
-            正在整理结果结构，请稍候...
-          </div>
-        ) : (
-          visibleSteps.map((step) => (
-            <MotionCard key={step} step={step} title={stageMeta[step].title} subtitle={stageMeta[step].subtitle} active>
-              {renderItems(grouped[step], step)}
-            </MotionCard>
-          ))
-        )}
+        <ol className="mt-4 flex items-center">
+          {stageTabs.map((tab, index) => {
+            const reached = index <= currentStageIndex;
+            const active = activeStage === tab.key;
+            return (
+              <li key={tab.key} className="flex flex-1 items-center">
+                <button
+                  type="button"
+                  disabled={!hasPaper}
+                  onClick={() => setActiveStage(tab.key)}
+                  className={[
+                    "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-semibold transition",
+                    active
+                      ? "border-[#ee9f79] bg-[#ee9f79] text-[#6e4a3a]"
+                      : reached
+                        ? "border-[#f2c5ae] bg-[#fff4ed] text-[#d77f56]"
+                        : "border-[#ddd8d2] bg-white text-[#8c847d]",
+                    !hasPaper ? "cursor-not-allowed opacity-60" : "",
+                  ].join(" ")}
+                >
+                  {index + 1}
+                </button>
+                {index < stageTabs.length - 1 ? (
+                  <span
+                    className={[
+                      "mx-1 h-[2px] flex-1 rounded-full transition-colors",
+                      index < currentStageIndex ? "bg-[#ee9f79]" : "bg-[#ddd8d2]",
+                    ].join(" ")}
+                  />
+                ) : null}
+              </li>
+            );
+          })}
+        </ol>
+
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          {stageTabs.map((tab) => {
+            const active = activeStage === tab.key;
+            const count = stageCards[tab.key].length;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                disabled={!hasPaper}
+                onClick={() => setActiveStage(tab.key)}
+                className={[
+                  "rounded-xl border px-2 py-2 text-left transition",
+                  active
+                    ? "border-[#f2c6af] bg-[#fff4ed]"
+                    : "border-[#e5dfd9] bg-[#f7f5f3] hover:border-[#d8d1cb] hover:bg-white",
+                  !hasPaper ? "cursor-not-allowed opacity-60" : "",
+                ].join(" ")}
+              >
+                <p className="text-xs font-semibold text-[#4c4640]">{tab.shortLabel}</p>
+                <p className="mt-0.5 text-[11px] text-[#958d86]">{count > 0 ? `${count} 张` : "待生成"}</p>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <section className={gridClass}>
+        <div className="space-y-5">
+        {!hasPaper
+          ? null
+          : !step1Done && step1Cards.length === 0
+            ? null
+            : !hasAnyStageCards
+              ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm text-slate-600">
+                  正在整理结果结构，请稍候...
+                </div>
+              )
+              : activeStageCards.length === 0
+                ? (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm text-slate-600">
+                    {activeStageMeta.label} 暂无卡片，请切换其他阶段或等待继续生成。
+                  </div>
+                )
+                : (
+                  <motion.article
+                    layout
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.28, ease: easeCurve }}
+                    className={`rounded-2xl border p-6 md:p-7 ${stagePanelTone[activeStageMeta.key]}`}
+                  >
+                    <header className="mb-4 space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#e38f67]">
+                        {activeStageMeta.label}
+                      </p>
+                      <h3 className="text-lg font-semibold text-[#2f2b28]">{activeStageMeta.shortLabel}</h3>
+                      <p className="text-sm leading-6 text-[#6f6761]">{activeStageMeta.subtitle}</p>
+                    </header>
+                    {renderItems(activeStageCards)}
+                  </motion.article>
+                )}
 
         <p className="text-xs text-slate-500">
           {!hasPaper
@@ -695,6 +847,7 @@ const StreamingContainer = ({
           </div>
         </aside>
       ) : null}
+      </section>
     </section>
   );
 };
