@@ -716,7 +716,7 @@ const RecommendPage = () => {
         if (!cancelled) {
           setPapers(next);
           if (data.error) {
-            setLoadError("实时数据源暂不可用（arXiv 连接失败），当前无法返回真实最新论文。");
+            setLoadError("实时源暂不可用，已自动切换到镜像站兜底结果。");
           }
         }
       } catch (error) {
@@ -788,7 +788,7 @@ const RecommendPage = () => {
         })}
       </div>
 
-      <div className="mt-7 grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
+      <div className="mt-7 grid items-start gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold text-slate-700">
@@ -882,7 +882,7 @@ const RecommendPage = () => {
           ))}
         </div>
 
-        <aside className="xl:sticky xl:top-28 xl:h-fit">
+        <aside className="self-start">
           <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-center justify-between">
               <h3 className="text-sm font-semibold text-slate-800">相关学者推荐</h3>
@@ -1545,13 +1545,17 @@ function getApiBaseCandidates(): string[] {
   return Array.from(new Set(candidates.map((item) => item.replace(/\/+$/, ""))));
 }
 
-async function postJsonWithFallback(path: string, body: Record<string, unknown>) {
+async function postJsonWithFallback(
+  path: string,
+  body: Record<string, unknown>,
+  method: "POST" | "PUT" = "POST",
+) {
   const candidates = getApiBaseCandidates();
   let lastError = "请求失败";
   for (const base of candidates) {
     try {
       const resp = await fetch(`${base}${path}`, {
-        method: "POST",
+        method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
@@ -1575,6 +1579,26 @@ async function getJsonWithFallback(pathWithQuery: string) {
   for (const base of candidates) {
     try {
       const resp = await fetch(`${base}${pathWithQuery}`);
+      const data = (await resp.json().catch(() => ({}))) as Record<string, unknown> & { detail?: string };
+      if (resp.ok) return { ok: true as const, data };
+      const detail = typeof data.detail === "string" ? data.detail : `HTTP ${resp.status}`;
+      lastError = detail;
+      if (resp.status !== 404) {
+        return { ok: false as const, error: detail };
+      }
+    } catch (e) {
+      lastError = e instanceof Error ? e.message : "网络异常";
+    }
+  }
+  return { ok: false as const, error: lastError };
+}
+
+async function deleteJsonWithFallback(pathWithQuery: string) {
+  const candidates = getApiBaseCandidates();
+  let lastError = "请求失败";
+  for (const base of candidates) {
+    try {
+      const resp = await fetch(`${base}${pathWithQuery}`, { method: "DELETE" });
       const data = (await resp.json().catch(() => ({}))) as Record<string, unknown> & { detail?: string };
       if (resp.ok) return { ok: true as const, data };
       const detail = typeof data.detail === "string" ? data.detail : `HTTP ${resp.status}`;
@@ -1618,6 +1642,7 @@ const App = () => {
   const [sidebarConversations, setSidebarConversations] = useState<ConversationItem[]>([]);
   const [sidebarHistoryLoading, setSidebarHistoryLoading] = useState(false);
   const [sidebarHistoryError, setSidebarHistoryError] = useState("");
+  const [deletingConversationId, setDeletingConversationId] = useState<number | null>(null);
   const [activeConversationId, setActiveConversationId] = useState<number | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profilePending, setProfilePending] = useState(false);
@@ -1747,6 +1772,28 @@ const App = () => {
   useEffect(() => {
     refreshSidebarConversations();
   }, [currentUser?.id]);
+
+  const handleDeleteConversation = async (conversationId: number, title: string) => {
+    if (!currentUser?.id || deletingConversationId) return;
+    const firstConfirm = window.confirm(`确认删除历史会话“${title || `会话 #${conversationId}`}”？`);
+    if (!firstConfirm) return;
+    const secondConfirm = window.confirm("删除后将无法恢复，是否继续？");
+    if (!secondConfirm) return;
+
+    setDeletingConversationId(conversationId);
+    setSidebarHistoryError("");
+    const result = await deleteJsonWithFallback(`/api/chat/conversations?user_id=${currentUser.id}&conversation_id=${conversationId}`);
+    if (!result.ok) {
+      setSidebarHistoryError(result.error || "删除历史会话失败");
+      setDeletingConversationId(null);
+      return;
+    }
+    if (activeConversationId === conversationId) {
+      setActiveConversationId(null);
+    }
+    await refreshSidebarConversations();
+    setDeletingConversationId(null);
+  };
 
   const normalizePhone = (raw: string) => {
     const s = raw.replace(/\s+/g, "").replace(/-/g, "");
@@ -1886,13 +1933,13 @@ const App = () => {
         display_name: profileDisplayName,
         bio: profileBio,
         avatar_emoji: profileAvatarEmoji,
-      });
+      }, "PUT");
       if (!profileResp.ok) throw new Error(profileResp.error || "保存个人信息失败");
       await postJsonWithFallback("/api/auth/preferences", {
         user_id: currentUser.id,
         research_topics: profileTopics,
         recent_keywords: profileKeywords,
-      });
+      }, "PUT");
       await fetchUserProfile(currentUser.id);
       setProfileMsg("个人信息已保存");
     } catch (e) {
@@ -1956,9 +2003,9 @@ const App = () => {
   const activeMeta = viewMeta[activeView];
 
   return (
-    <div data-theme={darkMode ? "dark" : "light"} className="app-root min-h-screen bg-[#ece9e7]">
-      <div className="app-shell flex min-h-screen w-full overflow-hidden bg-[#ece9e7]">
-        <aside className="app-sidebar w-full shrink-0 border-b border-[#d8d2cc] bg-[#e2ded9] md:w-[248px] md:border-b-0 md:border-r">
+    <div data-theme={darkMode ? "dark" : "light"} className="app-root fixed inset-0 overflow-x-hidden overflow-y-auto bg-[#ece9e7]">
+      <div className="app-shell flex min-h-full w-full bg-[#ece9e7]">
+        <aside className="app-sidebar w-full shrink-0 border-b border-[#d8d2cc] bg-[#e2ded9] md:sticky md:top-0 md:h-screen md:w-[248px] md:border-b-0 md:border-r">
           <div className="flex h-full flex-col p-5 md:p-6">
             <div className="flex items-center gap-2">
               <BrandIcon />
@@ -2005,7 +2052,7 @@ const App = () => {
               </ul>
             </nav>
 
-            <section className="mt-6 min-h-0 flex-1 rounded-xl border border-[#293242] bg-[#0f1a2a]/70 p-3">
+            <section className="mt-6 flex min-h-0 flex-1 flex-col rounded-xl border border-[#293242] bg-[#0f1a2a]/70 p-3">
               <div className="mb-2 flex items-center justify-between">
                 <p className="text-xs font-semibold tracking-[0.06em] text-[#dce7f8]">历史记录</p>
                 {currentUser ? (
@@ -2025,25 +2072,52 @@ const App = () => {
               ) : null}
 
               {currentUser && !sidebarHistoryLoading && !sidebarHistoryError && sidebarConversations.length > 0 ? (
-                <div className="scrollbar-thin mt-2 max-h-[300px] space-y-2 overflow-y-auto pr-1">
+                <div className="scrollbar-thin mt-2 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
                   {sidebarConversations.map((item) => (
-                    <button
+                    <article
                       key={item.id}
-                      type="button"
-                      onClick={() => {
-                        setActiveConversationId(item.id);
-                        setActiveView("home");
-                      }}
-                      className={`w-full rounded-lg border px-2.5 py-2 text-left transition ${
+                      className={`group w-full rounded-lg border px-2 py-2 transition ${
                         activeConversationId === item.id
                           ? "border-[#4e6f9f] bg-[#1a2d49]"
                           : "border-[#31415a] bg-[#132238] hover:border-[#44608a] hover:bg-[#172943]"
                       }`}
                       title={item.title}
                     >
-                      <p className="truncate text-xs font-medium text-[#e6eefc]">{item.title || `会话 #${item.id}`}</p>
-                      <p className="mt-1 text-[10px] text-[#9cb2d1]">{formatServerTime(item.updated_at)}</p>
-                    </button>
+                      <div className="flex items-start gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveConversationId(item.id);
+                            setActiveView("home");
+                          }}
+                          className="min-w-0 flex-1 text-left"
+                        >
+                          <p className="truncate text-xs font-medium text-[#e6eefc]">{item.title || `会话 #${item.id}`}</p>
+                          <p className="mt-1 text-[10px] text-[#9cb2d1]">{formatServerTime(item.updated_at)}</p>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleDeleteConversation(item.id, item.title);
+                          }}
+                          disabled={deletingConversationId === item.id}
+                          className="inline-flex h-6 w-6 items-center justify-center text-[#9cb2d1] opacity-0 transition group-hover:opacity-100 focus-visible:opacity-100 hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-40"
+                          aria-label={`删除会话 ${item.title || item.id}`}
+                        >
+                          {deletingConversationId === item.id ? (
+                            <span className="text-[10px]">...</span>
+                          ) : (
+                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                              <path d="M3 6h18" />
+                              <path d="M8 6V4h8v2" />
+                              <path d="M19 6l-1 14H6L5 6" />
+                              <path d="M10 11v6" />
+                              <path d="M14 11v6" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                    </article>
                   ))}
                 </div>
               ) : null}
@@ -2093,7 +2167,7 @@ const App = () => {
           </div>
         </aside>
 
-        <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex min-h-full flex-1 flex-col">
           <header className="app-header app-glass-header border-b border-[#d8d2cc] bg-[#ece9e7]/90 px-4 py-4 backdrop-blur md:px-7 md:py-5">
             <div className="flex items-center justify-between">
               <h1 className="app-title text-3xl font-bold tracking-tight text-[#111111]">{activeMeta.title}</h1>
@@ -2101,7 +2175,7 @@ const App = () => {
             <p className="app-subtitle mt-2 text-sm text-[#6f6863]">{activeMeta.subtitle}</p>
           </header>
 
-          <main className="min-h-0 flex-1 overflow-y-auto px-4 py-5 md:px-7 md:py-6">
+          <main className="min-h-0 flex-1 px-4 py-5 md:px-7 md:py-6">
             <AnimatePresence mode="wait">
               <motion.section
                 key={activeView}

@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import List, Optional, Sequence
 
 import bcrypt
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, create_engine, select, text, func
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, create_engine, select, text, func, delete
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
 try:
@@ -292,6 +292,21 @@ def update_conversation_title(user_id: int, conversation_id: int, title: str) ->
         db.commit()
         db.refresh(conv)
         return conv
+
+
+def delete_conversation(user_id: int, conversation_id: int) -> None:
+    with SessionLocal() as db:
+        conv = db.scalar(select(Conversation).where(Conversation.id == conversation_id, Conversation.user_id == user_id))
+        if conv is None:
+            raise ValueError("会话不存在")
+        db.execute(
+            delete(ChatHistory).where(
+                ChatHistory.user_id == user_id,
+                ChatHistory.conversation_id == conversation_id,
+            )
+        )
+        db.delete(conv)
+        db.commit()
 
 
 def list_conversations(user_id: int) -> Sequence[Conversation]:

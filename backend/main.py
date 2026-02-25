@@ -15,7 +15,7 @@ import hmac
 import html
 from datetime import datetime, timezone
 import xml.etree.ElementTree as ET
-from urllib.parse import quote_plus, quote
+from urllib.parse import quote_plus, quote, unquote
 import time
 
 
@@ -54,6 +54,7 @@ try:
       get_chat_history,
       create_conversation,
       update_conversation_title,
+      delete_conversation,
       list_conversations,
       get_conversation_messages,
       get_user_by_id,
@@ -700,6 +701,22 @@ async def auth_update_conversation_title(payload: ConversationTitleUpdateRequest
       raise HTTPException(status_code=500, detail=f"update_conversation_title_failed: {str(e)}")
 
 
+@app.delete("/api/chat/conversations")
+async def auth_delete_conversation(
+  user_id: int = Query(..., ge=1),
+  conversation_id: int = Query(..., ge=1),
+) -> Dict[str, Any]:
+  if not AUTH_READY:
+      raise HTTPException(status_code=500, detail=f"auth_not_ready: {AUTH_INIT_ERROR}")
+  try:
+      delete_conversation(user_id, conversation_id)
+      return {"ok": True}
+  except ValueError as e:
+      raise HTTPException(status_code=400, detail=str(e))
+  except Exception as e:
+      raise HTTPException(status_code=500, detail=f"delete_conversation_failed: {str(e)}")
+
+
 @app.get("/api/chat/messages")
 async def auth_chat_messages(
   user_id: int = Query(..., ge=1),
@@ -806,7 +823,7 @@ async def auth_chat_ask(payload: ChatAskRequest) -> Dict[str, Any]:
   except Exception as e:
       raise HTTPException(status_code=500, detail=f"chat_ask_failed: {str(e)}")
 # 鐠佸墽鐤?ModelScope API Token閿涘牓鐡熼幖銇為崠铏规畱 token閿?
-MODELSCOPE_API_TOKEN = "ms-0be979b5-11b5-462c-ab46-afa93062154f"
+MODELSCOPE_API_TOKEN = "ms-703c3243-36db-417b-b00b-86f0f40dd3fc"
 MODELSCOPE_API_URL = "https://api-inference.modelscope.cn/v1/chat/completions"
 # 鐏忔繆鐦担璺ㄦ暏婢舵碍膩閹焦膩閸ㄥ绱欐俊鍌涚亯閺€瀵旈惃鍕樈閿?
 MODEL_NAME = "deepseek-ai/DeepSeek-V3.2"  # DeepSeek 閹恒劎鎮婂Ο鈥崇€烽敍鍫濈毈閸愭瑦鐗稿蹇ョ礆
@@ -988,7 +1005,7 @@ SCHOLAR_MIRROR_BASES = [
 ]
 
 SCHOLAR_REQUEST_TIMEOUT_SECONDS = float(os.getenv("SCHOLAR_REQUEST_TIMEOUT_SECONDS", "6"))
-SCHOLAR_MAX_SOURCES = max(1, int(os.getenv("SCHOLAR_MAX_SOURCES", "1")))
+SCHOLAR_MAX_SOURCES = max(1, int(os.getenv("SCHOLAR_MAX_SOURCES", "2")))
 RECOMMENDATION_CACHE_TTL_SECONDS = max(30, int(os.getenv("RECOMMENDATION_CACHE_TTL_SECONDS", "180")))
 _RECOMMENDATION_CACHE: Dict[str, Dict[str, Any]] = {}
 
@@ -1720,7 +1737,23 @@ async def upload_paper(request: Request) -> Dict[str, str]:
   paper_id = str(uuid.uuid4())
   raw_bytes = await request.body()
 
-  filename = request.headers.get("x-filename", "uploaded.pdf")
+  raw_filename = request.headers.get("x-filename", "uploaded.pdf")
+  filename_encoding = (request.headers.get("x-filename-encoding", "") or "").strip().lower()
+  if filename_encoding == "b64":
+      try:
+          normalized_b64 = raw_filename.replace("-", "+").replace("_", "/")
+          normalized_b64 += "=" * (-len(normalized_b64) % 4)
+          filename = base64.b64decode(normalized_b64.encode("ascii")).decode("utf-8")
+      except Exception:
+          filename = raw_filename
+  elif filename_encoding == "url":
+      try:
+          filename = unquote(raw_filename)
+      except Exception:
+          filename = raw_filename
+  else:
+      filename = raw_filename
+  filename = (filename or "").strip() or "uploaded.pdf"
   extracted_text = extract_pdf_text(raw_bytes)
   if not extracted_text.strip():
       extracted_text = f"Uploaded file: {filename}. Content length: {len(raw_bytes)} bytes."

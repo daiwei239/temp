@@ -1,5 +1,6 @@
-import React from "react";
+ï»¿import React from "react";
 import ReactDOM from "react-dom/client";
+import "@xyflow/react/dist/style.css";
 import App from "./App";
 import "./styles.css";
 
@@ -8,7 +9,7 @@ function renderFatal(message: string) {
   if (!root) return;
   root.innerHTML = `
     <div style="padding:20px;font-family:'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif">
-      <h2 style="margin:0 0 8px;color:#b91c1c">Ç°¶ËÆô¶¯Ê§°Ü</h2>
+      <h2 style="margin:0 0 8px;color:#b91c1c">å‰ç«¯å¯åŠ¨å¤±è´¥</h2>
       <pre style="white-space:pre-wrap;background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:12px;color:#9f1239">${message}</pre>
     </div>
   `;

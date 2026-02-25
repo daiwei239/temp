@@ -32,9 +32,18 @@ const UploadPanel = ({
       setFileName(file.name);
 
       try {
+        const fileNameBytes = new TextEncoder().encode(file.name);
+        let fileNameBinary = "";
+        fileNameBytes.forEach((b) => {
+          fileNameBinary += String.fromCharCode(b);
+        });
+        const encodedFileName = btoa(fileNameBinary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
         const response = await fetch(`${getApiBaseUrl()}/api/paper/upload`, {
           method: "POST",
-          headers: { "x-filename": file.name },
+          headers: {
+            "x-filename": encodedFileName,
+            "x-filename-encoding": "b64",
+          },
           body: file,
         });
         const data = (await response.json()) as { paper_id: string; paper_title?: string };
