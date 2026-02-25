@@ -8,6 +8,7 @@ interface Handlers {
   onStep1Card?: (card: any) => void;
   onChatStream?: (content: string) => void;
   onChatDone?: (answer?: string) => void;
+  onConversationCreated?: (conversation: any) => void;
 }
 
 export function usePaperStream(paperId: string | null, handlers: Handlers) {
@@ -69,6 +70,9 @@ export function usePaperStream(paperId: string | null, handlers: Handlers) {
           break;
         case "chat_done":
           handlers.onChatDone?.(data.answer);
+          break;
+        case "conversation_created":
+          handlers.onConversationCreated?.(data.conversation);
           break;
         default:
           break;

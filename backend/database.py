@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import hashlib
 import hmac
 import os
+import re
 import secrets
 import tempfile
 from pathlib import Path
@@ -186,6 +187,51 @@ def verify_login(username: str, raw_password: str) -> Optional[User]:
         return user
 
 
+def register_user_by_phone(phone: str, raw_password: str) -> User:
+    phone = (phone or "").strip()
+    if not phone:
+        raise ValueError("手机号不能为空")
+    if not raw_password:
+        raise ValueError("密码不能为空")
+    username = _gen_mobile_username(phone)
+
+    with SessionLocal() as db:
+        if db.scalar(select(User).where(User.phone == phone)) is not None:
+            raise ValueError("该手机号已注册")
+        if db.scalar(select(User).where(User.username == username)) is not None:
+            username = f"{username}_{secrets.token_hex(2)}"
+
+        user = User(
+            username=username,
+            phone=phone,
+            password_hash=_hash_password(raw_password),
+            display_name=username,
+            avatar_emoji="👤",
+            last_login_at=datetime.utcnow(),
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        return user
+
+
+def verify_login_by_phone(phone: str, raw_password: str) -> Optional[User]:
+    phone = (phone or "").strip()
+    if not phone or not raw_password:
+        return None
+
+    with SessionLocal() as db:
+        user = db.scalar(select(User).where(User.phone == phone))
+        if user is None:
+            return None
+        if not _verify_password(raw_password, user.password_hash):
+            return None
+        user.last_login_at = datetime.utcnow()
+        db.commit()
+        db.refresh(user)
+        return user
+
+
 def get_user_by_id(user_id: int) -> Optional[User]:
     with SessionLocal() as db:
         return db.get(User, user_id)
@@ -228,6 +274,21 @@ def create_conversation(user_id: int, title: str) -> Conversation:
             raise ValueError("用户不存在")
         conv = Conversation(user_id=user_id, title=title)
         db.add(conv)
+        db.commit()
+        db.refresh(conv)
+        return conv
+
+
+def update_conversation_title(user_id: int, conversation_id: int, title: str) -> Conversation:
+    cleaned = (title or "").strip()[:200]
+    if not cleaned:
+        raise ValueError("标题不能为空")
+    with SessionLocal() as db:
+        conv = db.scalar(select(Conversation).where(Conversation.id == conversation_id, Conversation.user_id == user_id))
+        if conv is None:
+            raise ValueError("会话不存在")
+        conv.title = cleaned
+        conv.updated_at = datetime.utcnow()
         db.commit()
         db.refresh(conv)
         return conv
@@ -308,6 +369,41 @@ def update_research_topics(user_id: int, research_topics: List[str], recent_keyw
             pref.research_topics = cleaned_topics
             pref.recent_keywords = (recent_keywords or "").strip() or None
 
+        db.commit()
+        db.refresh(pref)
+        return pref
+
+
+def append_user_preference_keywords(
+    user_id: int,
+    keywords: List[str],
+    research_topics: Optional[List[str]] = None,
+    max_keywords: int = 80,
+    max_topics: int = 20,
+) -> UserPreference:
+    """追加写入用户偏好，不覆盖历史。"""
+    cleaned_keywords = [str(k).strip() for k in (keywords or []) if str(k).strip()]
+    cleaned_topics = [str(t).strip() for t in (research_topics or []) if str(t).strip()]
+
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        if user is None:
+            raise ValueError("用户不存在")
+
+        pref = db.scalar(select(UserPreference).where(UserPreference.user_id == user_id))
+        if pref is None:
+            pref = UserPreference(user_id=user_id, research_topics=[], recent_keywords=None)
+            db.add(pref)
+
+        existing_keywords = re.split(r"[,，、;；\s]+", pref.recent_keywords or "")
+        existing_keywords = [k.strip() for k in existing_keywords if k and k.strip()]
+        merged_keywords = list(dict.fromkeys([*cleaned_keywords, *existing_keywords]))[:max_keywords]
+
+        existing_topics = [str(t).strip() for t in (pref.research_topics or []) if str(t).strip()]
+        merged_topics = list(dict.fromkeys([*cleaned_topics, *existing_topics]))[:max_topics]
+
+        pref.recent_keywords = "、".join(merged_keywords) if merged_keywords else None
+        pref.research_topics = merged_topics
         db.commit()
         db.refresh(pref)
         return pref

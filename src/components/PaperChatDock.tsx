@@ -107,20 +107,20 @@ const PaperChatDock = ({ messages, connected, hasPaper, sending, showInput, onSe
       </div>
 
       {showInput ? (
-        <form onSubmit={submit} className="mt-4 rounded-2xl border border-slate-200 bg-white p-3">
-          <div className="flex items-end gap-2">
+        <form onSubmit={submit} className="mt-4 rounded-2xl border border-slate-200 bg-white p-2.5">
+          <div className="grid grid-cols-[1fr_auto] items-center gap-3">
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              rows={2}
+              rows={1}
               placeholder={hasPaper ? "继续追问这篇论文，例如：请给出可复现实验设计建议。" : "请先上传并分析论文后再提问"}
-              className="h-14 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+              className="h-11 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm leading-6 text-slate-700 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
               disabled={!hasPaper || !connected || sending}
             />
             <button
               type="submit"
               disabled={!canSend}
-              className="btn-primary h-14 rounded-xl bg-[#8DAFDD] px-5 text-sm font-medium text-[#6e4a3a] transition hover:bg-[#7FA2D2] disabled:cursor-not-allowed disabled:bg-slate-300"
+              className="btn-primary inline-flex h-11 min-w-[116px] shrink-0 items-center justify-center whitespace-nowrap rounded-xl bg-[#8DAFDD] px-6 text-sm font-semibold tracking-wide text-[#6e4a3a] transition hover:bg-[#7FA2D2] disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               {sending ? "回答中..." : "发送"}
             </button>

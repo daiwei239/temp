@@ -1,5 +1,5 @@
 ﻿import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import UploadPanel from "./components/UploadPanel";
 import PaperChatDock, { type ChatMessage } from "./components/PaperChatDock";
 import StreamingContainer from "./components/StreamingContainer";
@@ -57,6 +57,63 @@ interface RelatedAuthorRec {
   name: string;
   factors: string;
   reason: string;
+}
+
+interface AuthUser {
+  id: number;
+  username: string;
+  phone?: string | null;
+  display_name?: string;
+  bio?: string;
+  avatar_emoji?: string;
+  created_at: string;
+  last_login_at?: string | null;
+}
+
+interface AuthResponse {
+  ok: boolean;
+  user: AuthUser;
+}
+
+interface AuthMeResponse {
+  ok: boolean;
+  user: AuthUser;
+  preference?: {
+    research_topics?: string[];
+    recent_keywords?: string;
+  };
+  stats?: {
+    conversation_count?: number;
+    message_count?: number;
+    last_chat_at?: string | null;
+  };
+}
+
+interface ConversationItem {
+  id: number;
+  user_id: number;
+  title: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface ConversationListResponse {
+  ok: boolean;
+  items: ConversationItem[];
+}
+
+interface PersistedHistoryItem {
+  id: number;
+  user_id: number;
+  conversation_id?: number | null;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: string;
+}
+
+interface PersistedHistoryResponse {
+  ok: boolean;
+  items: PersistedHistoryItem[];
 }
 
 type ViewKey = "home" | "search" | "recommend" | "polish";
@@ -219,11 +276,98 @@ const disciplineOptions: Array<{ key: DisciplineKey; label: string }> = [
   { key: "social", label: "社会科学" },
 ];
 
+const polishVenueMap: Record<DisciplineKey, Array<{ id: string; label: string }>> = {
+  cs: [
+    { id: "acl", label: "ACL（NLP 顶会）" },
+    { id: "iclr", label: "ICLR（机器学习顶会）" },
+    { id: "icse", label: "ICSE（软件工程顶会）" },
+    { id: "sigmod", label: "SIGMOD（数据库顶会）" },
+    { id: "infocom", label: "INFOCOM（网络通信顶会）" },
+  ],
+  math: [
+    { id: "annals", label: "Annals of Math（顶刊）" },
+    { id: "invent", label: "Inventiones（顶刊）" },
+    { id: "jams", label: "JAMS（顶刊）" },
+    { id: "acta", label: "Acta Mathematica（顶刊）" },
+    { id: "cmp", label: "CMP（交叉顶刊）" },
+  ],
+  physics: [
+    { id: "prl", label: "PRL（顶刊）" },
+    { id: "prx", label: "PRX（顶刊）" },
+    { id: "jhep", label: "JHEP（高能顶刊）" },
+    { id: "nature_physics", label: "Nature Physics（顶刊）" },
+    { id: "rmp", label: "RMP（综述顶刊）" },
+  ],
+  biology: [
+    { id: "cell", label: "Cell（顶刊）" },
+    { id: "nature_bio", label: "Nature Biotechnology（顶刊）" },
+    { id: "nat_methods", label: "Nature Methods（顶刊）" },
+    { id: "genome_res", label: "Genome Research（顶刊）" },
+    { id: "pnas", label: "PNAS（综合顶刊）" },
+  ],
+  economics: [
+    { id: "aer", label: "AER（顶刊）" },
+    { id: "qje", label: "QJE（顶刊）" },
+    { id: "jpe", label: "JPE（顶刊）" },
+    { id: "etrica", label: "Econometrica（顶刊）" },
+    { id: "restud", label: "REStud（顶刊）" },
+  ],
+  medicine: [
+    { id: "nejm", label: "NEJM（顶刊）" },
+    { id: "thelancet", label: "The Lancet（顶刊）" },
+    { id: "jama", label: "JAMA（顶刊）" },
+    { id: "bmj", label: "BMJ（顶刊）" },
+    { id: "nature_medicine", label: "Nature Medicine（顶刊）" },
+  ],
+  chemistry: [
+    { id: "jacs", label: "JACS（顶刊）" },
+    { id: "angew", label: "Angew. Chem.（顶刊）" },
+    { id: "nat_chem", label: "Nature Chemistry（顶刊）" },
+    { id: "chem_sci", label: "Chemical Science（顶刊）" },
+    { id: "acie", label: "ACS Central Science（顶刊）" },
+  ],
+  materials: [
+    { id: "am", label: "Advanced Materials（顶刊）" },
+    { id: "afm", label: "Advanced Functional Materials（顶刊）" },
+    { id: "nature_materials", label: "Nature Materials（顶刊）" },
+    { id: "jmps", label: "JMPS（顶刊）" },
+    { id: "acta_mater", label: "Acta Materialia（顶刊）" },
+  ],
+  earth: [
+    { id: "nature_geo", label: "Nature Geoscience（顶刊）" },
+    { id: "jgr", label: "JGR（顶刊）" },
+    { id: "grl", label: "GRL（顶刊）" },
+    { id: "clim_dyn", label: "Climate Dynamics（顶刊）" },
+    { id: "bg", label: "Biogeosciences（顶刊）" },
+  ],
+  social: [
+    { id: "asr", label: "ASR（顶刊）" },
+    { id: "ajs", label: "AJS（顶刊）" },
+    { id: "apsr", label: "APSR（顶刊）" },
+    { id: "jop", label: "JOP（顶刊）" },
+    { id: "social_forces", label: "Social Forces（顶刊）" },
+  ],
+};
+
 interface RecommendResponse {
   domain: JournalDomain;
   items: TopPaper[];
   source?: string;
   error?: string;
+}
+
+interface SearchResponse {
+  query?: string;
+  optimized_query?: string;
+  items?: TopPaper[];
+  source?: string;
+  error?: string;
+}
+
+interface PolishResponse {
+  ok?: boolean;
+  detail?: string;
+  items?: Array<{ style: string; text: string }>;
 }
 
 interface ScholarProfile {
@@ -326,37 +470,204 @@ const scholarsByDiscipline: Record<DisciplineKey, ScholarProfile[]> = {
   ],
 };
 
-const SearchPage = () => {
-  return (
-    <section className="rounded-3xl border border-slate-200 bg-slate-50 p-8">
-      <h2 className="text-2xl font-semibold text-slate-800">搜索</h2>
-      <p className="mt-2 text-slate-600">输入关键词、作者或研究主题，快速定位论文与相关资料。</p>
+const SearchPage = ({ currentUser }: { currentUser: AuthUser | null }) => {
+  const [query, setQuery] = useState("");
+  const [optimizedQuery, setOptimizedQuery] = useState("");
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState("");
+  const [searchResults, setSearchResults] = useState<TopPaper[]>([]);
+  const [cloudLoading, setCloudLoading] = useState(false);
+  const [cloudError, setCloudError] = useState("");
+  const [userKeywords, setUserKeywords] = useState<string[]>([]);
 
-      <div className="mt-6 grid gap-4 md:grid-cols-[1fr_auto]">
+  const refreshUserKeywordCloud = async () => {
+    if (!currentUser?.id) {
+      setUserKeywords([]);
+      setCloudError("");
+      return;
+    }
+    setCloudLoading(true);
+    setCloudError("");
+    const resp = await getJsonWithFallback(`/api/auth/me?user_id=${currentUser.id}`);
+    if (!resp.ok) {
+      setUserKeywords([]);
+      setCloudError("近期关键词读取失败");
+      setCloudLoading(false);
+      return;
+    }
+    const data = resp.data as AuthMeResponse;
+    const recent = (data.preference?.recent_keywords || "")
+      .split(/[,\s，、;；]+/)
+      .map((x) => x.trim())
+      .filter(Boolean);
+    setUserKeywords(Array.from(new Set(recent)).slice(0, 24));
+    setCloudLoading(false);
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!currentUser?.id) {
+      setUserKeywords([]);
+      setCloudError("");
+      return;
+    }
+    const run = async () => {
+      await refreshUserKeywordCloud();
+      if (cancelled) return;
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser]);
+
+  const cloudItems = useMemo(
+    () =>
+      userKeywords.map((word, idx) => {
+        const tier = idx % 4;
+        const toneClass =
+          tier === 0
+            ? "border-blue-200 bg-blue-50 text-blue-700"
+            : tier === 1
+              ? "border-cyan-200 bg-cyan-50 text-cyan-700"
+              : tier === 2
+                ? "border-slate-200 bg-white text-slate-700"
+                : "border-indigo-200 bg-indigo-50 text-indigo-700";
+        return { word, toneClass };
+      }),
+    [userKeywords],
+  );
+
+  const runSearch = async () => {
+    const q = query.trim();
+    if (!q) {
+      setSearchError("请输入关键词后再搜索");
+      setSearchResults([]);
+      setOptimizedQuery("");
+      return;
+    }
+    setSearchLoading(true);
+    setSearchError("");
+    const userParam = currentUser?.id ? `&user_id=${currentUser.id}` : "";
+    const resp = await getJsonWithFallback(`/api/search?q=${encodeURIComponent(q)}&limit=10${userParam}`);
+    if (!resp.ok) {
+      setSearchLoading(false);
+      setSearchResults([]);
+      setOptimizedQuery("");
+      setSearchError(resp.error || "搜索失败，请检查后端服务或稍后重试");
+      return;
+    }
+    const data = resp.data as SearchResponse;
+    const items = Array.isArray(data.items) ? data.items : [];
+    setSearchResults(items.slice(0, 10));
+    setOptimizedQuery((data.optimized_query || "").trim());
+    if (items.length === 0) {
+      setSearchError(data.error ? "检索服务暂不可用，请稍后重试" : "未检索到相关论文，请尝试更换关键词");
+    } else {
+      setSearchError("");
+    }
+    if (currentUser?.id) {
+      await refreshUserKeywordCloud();
+    }
+    setSearchLoading(false);
+  };
+
+  return (
+    <section className="rounded-3xl border border-slate-200 bg-slate-50 p-6 md:p-8">
+      <h2 className="text-2xl font-semibold text-slate-800">搜索</h2>
+      <p className="mt-2 text-base leading-relaxed text-slate-600 md:text-lg">
+        输入关键词、作者或研究主题，快速定位论文与相关资料，并结合近期兴趣优化检索。
+      </p>
+
+      <div className="mt-5 grid gap-3 md:grid-cols-[1fr_260px]">
         <input
-          className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              runSearch();
+            }
+          }}
+          className="h-12 w-full rounded-xl border border-slate-200 bg-white px-5 text-base text-slate-700 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
           placeholder="例如：多模态检索增强生成、GraphRAG、可解释推荐..."
         />
         <button
           type="button"
-          className="btn-primary rounded-xl bg-[#8DAFDD] px-6 py-3 text-sm font-medium text-[#6e4a3a] transition hover:bg-[#7FA2D2]"
+          onClick={runSearch}
+          disabled={searchLoading}
+          className="btn-primary h-12 rounded-xl bg-[#2f66dd] px-6 text-base font-semibold text-white transition hover:bg-[#2859c4]"
         >
-          立即搜索
+          {searchLoading ? "搜索中..." : "立即搜索"}
         </button>
       </div>
 
-      <div className="mt-8 grid gap-4 md:grid-cols-2">
-        <article className="rounded-2xl border border-slate-200 bg-white p-5">
-          <p className="text-xs uppercase tracking-[0.12em] text-slate-500">示例结果 01</p>
-          <h3 className="mt-2 text-base font-semibold text-slate-800">Retrieval-Augmented Generation: Survey and Advances</h3>
-          <p className="mt-2 text-sm leading-6 text-slate-600">聚焦 RAG 架构演进、评测方法与产业落地案例，适合综述类写作起步。</p>
+      {searchError ? <p className="mt-3 text-sm text-rose-600">{searchError}</p> : null}
+      {optimizedQuery ? (
+        <p className="mt-2 text-sm text-slate-600">
+          学术化检索词：<span className="font-medium text-slate-800">{optimizedQuery}</span>
+        </p>
+      ) : null}
+
+      {searchResults.length > 0 ? (
+        <article className="mt-5 rounded-2xl border border-slate-200 bg-white p-5">
+          <div className="space-y-4">
+            {searchResults.map((paper) => (
+              <article key={paper.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-slate-600">#{paper.id}</span>
+                  <span className="rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-blue-700">{paper.venue}</span>
+                  <span className="text-slate-500">{paper.publishedAt}</span>
+                </div>
+                <a href={paper.pdfUrl} target="_blank" rel="noreferrer" className="mt-2 block">
+                  <h3 className="text-xl font-semibold leading-tight text-slate-800 hover:text-blue-700">{paper.title}</h3>
+                </a>
+                <p className="mt-3 text-sm leading-7 text-slate-600">{paper.summary}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {(paper.tags || []).slice(0, 6).map((tag) => (
+                    <span key={`${paper.id}-${tag}`} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs text-slate-600">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+                <div className="mt-4">
+                  <a
+                    href={paper.pdfUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
+                  >
+                    查看PDF
+                  </a>
+                </div>
+              </article>
+            ))}
+          </div>
         </article>
-        <article className="rounded-2xl border border-slate-200 bg-white p-5">
-          <p className="text-xs uppercase tracking-[0.12em] text-slate-500">示例结果 02</p>
-          <h3 className="mt-2 text-base font-semibold text-slate-800">GraphRAG for Long-Context Reasoning</h3>
-          <p className="mt-2 text-sm leading-6 text-slate-600">介绍图结构检索在复杂问答中的优势，并给出知识组织与推理路径设计。</p>
-        </article>
-      </div>
+      ) : null}
+
+      <article className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 md:min-h-0 md:overflow-y-auto">
+        <div className="flex items-center justify-between gap-4">
+          <h3 className="text-xl font-semibold text-slate-800">近期关键词词云</h3>
+          <p className="text-sm text-slate-500">{currentUser ? "基于你的近期偏好" : "登录后可展示个人词云"}</p>
+        </div>
+        {cloudLoading ? <p className="mt-3 text-base leading-relaxed text-slate-600">正在生成词云...</p> : null}
+        {!cloudLoading && cloudError ? <p className="mt-3 text-sm text-rose-600">{cloudError}</p> : null}
+        {!cloudLoading && !cloudError && cloudItems.length === 0 ? (
+          <p className="mt-3 text-base leading-relaxed text-slate-600">
+            暂无关键词数据。你可以先在首页完成论文分析和追问。
+          </p>
+        ) : null}
+        {!cloudLoading && !cloudError && cloudItems.length > 0 ? (
+          <div className="mt-3 flex flex-wrap gap-2.5">
+            {cloudItems.map((item, idx) => (
+              <span key={`${item.word}-${idx}`} className={`rounded-full border px-3 py-1 text-sm font-medium ${item.toneClass}`}>
+                {item.word}
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </article>
     </section>
   );
 };
@@ -648,42 +959,159 @@ const RecommendPage = () => {
 };
 
 const PolishPage = () => {
+  const [discipline, setDiscipline] = useState<DisciplineKey>("cs");
+  const [inputText, setInputText] = useState("");
+  const venues = polishVenueMap[discipline] ?? [];
+  const [selectedVenueIds, setSelectedVenueIds] = useState<string[]>(["acl"]);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+  const [results, setResults] = useState<Array<{ style: string; text: string }>>([]);
+
+  useEffect(() => {
+    const first = venues[0]?.id;
+    setSelectedVenueIds(first ? [first] : []);
+  }, [discipline]);
+
+  const venueNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    Object.values(polishVenueMap).forEach((venueList) => {
+      venueList.forEach((item) => map.set(item.id, item.label));
+    });
+    return map;
+  }, []);
+
+  const toggleVenue = (venueId: string) => {
+    setSelectedVenueIds((prev) => {
+      if (prev.includes(venueId)) return prev.filter((id) => id !== venueId);
+      return [...prev, venueId];
+    });
+  };
+
+  const runPolish = async () => {
+    const text = inputText.trim();
+    if (!text) {
+      setError("请先输入需要润色的内容");
+      return;
+    }
+    if (selectedVenueIds.length === 0) {
+      setError("请至少勾选一种顶刊类别");
+      return;
+    }
+    setPending(true);
+    setError("");
+    const resp = await postJsonWithFallback("/api/polish", {
+      text,
+      styles: selectedVenueIds,
+    });
+    if (!resp.ok) {
+      setPending(false);
+      setResults([]);
+      setError(resp.error || "润色失败");
+      return;
+    }
+    const data = resp.data as PolishResponse;
+    setResults(Array.isArray(data.items) ? data.items : []);
+    setPending(false);
+  };
+
   return (
-    <section className="rounded-3xl border border-slate-200 bg-slate-50 p-8">
+    <section className="rounded-3xl border border-slate-200 bg-slate-50 p-6 md:h-[calc(100vh-190px)] md:min-h-[560px] md:overflow-hidden md:p-8 md:flex md:flex-col">
       <h2 className="text-2xl font-semibold text-slate-800">文字润色</h2>
-      <p className="mt-2 text-slate-600">粘贴段落后获取学术表达优化建议，包括术语统一、逻辑衔接与语气规范。</p>
+      <p className="mt-2 text-sm text-slate-600 md:text-base">输入原文后选择学科与顶刊类别（每个学科5类），右侧展示对应规范译文。</p>
 
-      <div className="mt-6 grid gap-5 md:grid-cols-2">
-        <label className="polish-input-wrap block rounded-2xl border border-slate-200 bg-white p-4">
-          <span className="text-sm font-medium text-slate-700">原文输入</span>
-          <textarea
-            className="polish-input mt-3 h-40 w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#dcc9b8] focus:ring-2 focus:ring-[#F8EFE7]"
-            placeholder="请输入需要润色的学术段落..."
-          />
-        </label>
+      <div className="mt-3 grid gap-4 md:min-h-0 md:flex-1 xl:grid-cols-2">
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 md:min-h-0 md:flex md:flex-col">
+          <label className="block">
+            <span className="text-lg font-semibold text-slate-800">原文输入</span>
+            <textarea
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              className="mt-2 h-28 w-full resize-none rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100 md:h-32"
+              placeholder="请输入需要润色的学术段落..."
+            />
+          </label>
 
-        <article className="polish-result rounded-2xl border border-[#e7d9cc] bg-[#F8EFE7] p-4">
-          <p className="polish-result-title text-sm font-medium text-[#8a5548]">润色后（示例）</p>
-          <p className="polish-result-text mt-3 text-sm leading-7 text-slate-700">
-            To improve robustness in long-context reasoning, we introduce a graph-structured retrieval module that explicitly models entity-level relations and evidence paths.
-            Experimental results indicate that this design consistently improves answer faithfulness while preserving response efficiency.
-          </p>
+          <div className="mt-2.5 flex flex-wrap gap-2">
+            {disciplineOptions.map((item) => {
+              const active = item.key === discipline;
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => setDiscipline(item.key)}
+                  className={`rounded-full border px-4 py-1.5 text-sm font-medium transition ${
+                    active
+                      ? "border-blue-600 bg-blue-600 text-white"
+                      : "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-2.5 grid gap-x-6 gap-y-2 md:grid-cols-2">
+            {venues.map((item) => (
+              <label key={item.id} className="inline-flex items-center gap-2 text-sm text-slate-800">
+                <input
+                  type="checkbox"
+                  checked={selectedVenueIds.includes(item.id)}
+                  onChange={() => toggleVenue(item.id)}
+                  className="h-5 w-5 rounded border-slate-300 text-blue-600 focus:ring-blue-200"
+                />
+                <span>{item.label}</span>
+              </label>
+            ))}
+          </div>
+        </section>
+
+        <article className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-4 md:min-h-0 md:overflow-y-auto">
+          <h3 className="text-lg font-semibold text-emerald-800">规范译文</h3>
+          {results.length === 0 ? (
+            <p className="mt-3 text-sm leading-relaxed text-slate-700">等待生成结果...</p>
+          ) : (
+            <div className="mt-3 space-y-3">
+              {results.map((item) => (
+                <article key={item.style} className="rounded-xl border border-emerald-200 bg-white/90 p-3">
+                  <p className="text-xs font-semibold text-emerald-700">{venueNameMap.get(item.style) || item.style}</p>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{item.text}</p>
+                </article>
+              ))}
+            </div>
+          )}
         </article>
       </div>
 
-      <div className="mt-4 flex justify-end">
+      {error ? <p className="mt-2 text-sm text-rose-600">{error}</p> : null}
+
+      <div className="mt-4 shrink-0 flex justify-end">
         <button
           type="button"
-          className="btn-primary rounded-xl bg-[#8DAFDD] px-6 py-3 text-sm font-medium text-[#6e4a3a] transition hover:bg-[#7FA2D2]"
+          onClick={runPolish}
+          disabled={pending}
+          className="rounded-xl bg-emerald-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700"
         >
-          开始润色
+          {pending ? "生成中..." : "开始润色"}
         </button>
       </div>
     </section>
   );
 };
 
-const HomePage = () => {
+const HomePage = ({
+  currentUser,
+  activeConversationId,
+  onConversationCreated,
+  onHistoryRefresh,
+  onTraceUpdated,
+}: {
+  currentUser: AuthUser | null;
+  activeConversationId: number | null;
+  onConversationCreated: (conversationId: number) => void;
+  onHistoryRefresh: () => void;
+  onTraceUpdated: () => void;
+}) => {
   const [paperId, setPaperId] = useState<string | null>(null);
   const [statusText, setStatusText] = useState("等待上传论文...");
   const [analysisStarted, setAnalysisStarted] = useState(false);
@@ -694,6 +1122,7 @@ const HomePage = () => {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatPending, setChatPending] = useState(false);
   const [relatedPapersRealtime, setRelatedPapersRealtime] = useState<RelatedPaperRec[]>([]);
+  const lastSyncedTraceKey = useRef("");
 
   const paperMeta = useMemo<PaperMetaInfo>(() => {
     const modelMeta = step1Data?.paper_meta;
@@ -778,6 +1207,24 @@ const HomePage = () => {
 
   const relatedPapers = relatedPapersRealtime.length > 0 ? relatedPapersRealtime : relatedPapersFallback;
 
+  useEffect(() => {
+    if (!currentUser?.id || !step1Done) return;
+    const validKeywords = paperMeta.keywords.filter((item) => item && item !== "待识别");
+    if (validKeywords.length === 0) return;
+    const traceKey = `${currentUser.id}::${validKeywords.join("|")}`;
+    if (lastSyncedTraceKey.current === traceKey) return;
+    lastSyncedTraceKey.current = traceKey;
+    const syncTrace = async () => {
+      const result = await postJsonWithFallback("/api/auth/preferences/append", {
+        user_id: currentUser.id,
+        research_topics: validKeywords.slice(0, 5),
+        keywords: validKeywords,
+      });
+      if (result.ok) onTraceUpdated();
+    };
+    syncTrace();
+  }, [currentUser?.id, onTraceUpdated, step1Done, paperMeta.keywords]);
+
   const relatedAuthors = useMemo<RelatedAuthorRec[]>(() => {
     if (!step1Done) return [];
     return [
@@ -856,10 +1303,53 @@ const HomePage = () => {
           ? [...prev, { id: `assistant-${Date.now()}`, role: "assistant", content: answer, streaming: false }]
           : prev;
       });
+      onHistoryRefresh();
+    },
+    onConversationCreated: (conversation) => {
+      if (!conversation?.id) return;
+      onConversationCreated(Number(conversation.id));
+      onHistoryRefresh();
     },
   });
 
-  const handleUploaded = (newPaperId: string) => {
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!currentUser?.id || !activeConversationId) return;
+      const result = await getJsonWithFallback(
+        `/api/chat/messages?user_id=${currentUser.id}&conversation_id=${activeConversationId}`,
+      );
+      if (!result.ok) return;
+      const data = result.data as PersistedHistoryResponse;
+      const items = Array.isArray(data.items) ? data.items : [];
+      if (cancelled) return;
+      setChatMessages(
+        items.map((item) => ({
+          id: `db-msg-${item.id}`,
+          role: item.role,
+          content: item.content,
+          streaming: false,
+        })),
+      );
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeConversationId, currentUser?.id]);
+
+  const createConversationOnUpload = async (title?: string) => {
+    if (!currentUser?.id) return null;
+    const result = await postJsonWithFallback("/api/chat/conversations", {
+      user_id: currentUser.id,
+      title: (title || "").trim() || "论文解析会话",
+    });
+    if (!result.ok) return null;
+    const data = result.data as { item?: ConversationItem };
+    return data.item ?? null;
+  };
+
+  const handleUploaded = async (newPaperId: string, meta?: { paperTitle?: string; fileName?: string }) => {
     setPaperId(newPaperId);
     setAnalysisStarted(false);
     setStep1Text("");
@@ -869,6 +1359,16 @@ const HomePage = () => {
     setChatMessages([]);
     setChatPending(false);
     setStatusText("上传完成，等待开始分析...");
+    try {
+      const seedTitle = meta?.paperTitle || meta?.fileName || "论文解析会话";
+      const conv = await createConversationOnUpload(seedTitle);
+      if (conv?.id) {
+        onConversationCreated(conv.id);
+      }
+      onHistoryRefresh();
+    } catch {
+      // ignore upload conversation failure
+    }
   };
 
   const handleStartAnalyze = () => {
@@ -879,11 +1379,14 @@ const HomePage = () => {
     setStep1Cards([]);
     setStep1Done(false);
     setStatusText("正在生成结构化内容...");
-    sendAction("analyze_step1");
+    sendAction("analyze_step1", {
+      user_id: currentUser?.id,
+      conversation_id: activeConversationId ?? undefined,
+    });
   };
 
-  const handleSendChat = (question: string) => {
-    if (!paperId) return;
+  const handleSendChat = async (question: string) => {
+    if (!paperId && (!currentUser?.id || !activeConversationId)) return;
     setChatMessages((prev) => [
       ...prev,
       { id: `user-${Date.now()}`, role: "user", content: question },
@@ -891,7 +1394,34 @@ const HomePage = () => {
     ]);
     setChatPending(true);
     setStatusText("正在生成追问回答...");
-    sendAction("paper_chat", { question });
+    if (!paperId && currentUser?.id && activeConversationId) {
+      const result = await postJsonWithFallback("/api/chat/ask", {
+        user_id: currentUser.id,
+        conversation_id: activeConversationId,
+        question,
+        answer_mode: "concise",
+      });
+      const answer = result.ok ? String((result.data as { answer?: string }).answer || "") : "追问失败，请稍后重试。";
+      setChatPending(false);
+      setChatMessages((prev) => {
+        if (prev.length === 0) return prev;
+        const updated = [...prev];
+        const last = updated[updated.length - 1];
+        if (last.role === "assistant") {
+          updated[updated.length - 1] = { ...last, content: answer, streaming: false };
+        } else {
+          updated.push({ id: `assistant-${Date.now()}`, role: "assistant", content: answer, streaming: false });
+        }
+        return updated;
+      });
+      onHistoryRefresh();
+      return;
+    }
+    sendAction("paper_chat", {
+      question,
+      user_id: currentUser?.id,
+      conversation_id: activeConversationId ?? undefined,
+    });
   };
 
   return (
@@ -977,13 +1507,13 @@ const HomePage = () => {
         </section>
       ) : null}
 
-      {paperId ? (
+      {paperId || activeConversationId ? (
         <PaperChatDock
           messages={chatMessages}
-          hasPaper={Boolean(paperId)}
+          hasPaper={Boolean(paperId) || Boolean(activeConversationId)}
           connected={connected}
           sending={chatPending}
-          showInput={step1Done}
+          showInput={step1Done || Boolean(activeConversationId)}
           onSend={handleSendChat}
         />
       ) : null}
@@ -1007,9 +1537,101 @@ const BrandIcon = () => {
   );
 };
 
+function getApiBaseCandidates(): string[] {
+  const primary = getApiBaseUrl();
+  const protocol = window.location.protocol === "https:" ? "https:" : "http:";
+  const host = window.location.hostname;
+  const candidates = [primary, `${protocol}//${host}:8002`, `${protocol}//${host}:8000`];
+  return Array.from(new Set(candidates.map((item) => item.replace(/\/+$/, ""))));
+}
+
+async function postJsonWithFallback(path: string, body: Record<string, unknown>) {
+  const candidates = getApiBaseCandidates();
+  let lastError = "请求失败";
+  for (const base of candidates) {
+    try {
+      const resp = await fetch(`${base}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = (await resp.json().catch(() => ({}))) as Record<string, unknown> & { detail?: string };
+      if (resp.ok) return { ok: true as const, data };
+      const detail = typeof data.detail === "string" ? data.detail : `HTTP ${resp.status}`;
+      lastError = detail;
+      if (resp.status !== 404) {
+        return { ok: false as const, error: detail };
+      }
+    } catch (e) {
+      lastError = e instanceof Error ? e.message : "网络异常";
+    }
+  }
+  return { ok: false as const, error: lastError };
+}
+
+async function getJsonWithFallback(pathWithQuery: string) {
+  const candidates = getApiBaseCandidates();
+  let lastError = "请求失败";
+  for (const base of candidates) {
+    try {
+      const resp = await fetch(`${base}${pathWithQuery}`);
+      const data = (await resp.json().catch(() => ({}))) as Record<string, unknown> & { detail?: string };
+      if (resp.ok) return { ok: true as const, data };
+      const detail = typeof data.detail === "string" ? data.detail : `HTTP ${resp.status}`;
+      lastError = detail;
+      if (resp.status !== 404) {
+        return { ok: false as const, error: detail };
+      }
+    } catch (e) {
+      lastError = e instanceof Error ? e.message : "网络异常";
+    }
+  }
+  return { ok: false as const, error: lastError };
+}
+
+function formatServerTime(value?: string | null): string {
+  if (!value) return "暂无";
+  const raw = value.trim();
+  if (!raw) return "暂无";
+  const withZone = /(?:Z|[+-]\d{2}:\d{2})$/.test(raw) ? raw : `${raw}Z`;
+  const dt = new Date(withZone);
+  if (Number.isNaN(dt.getTime())) return raw;
+  return dt.toLocaleString();
+}
+
 const App = () => {
+  const AUTH_STORAGE_KEY = "peragent_auth_user_v1";
   const [activeView, setActiveView] = useState<ViewKey>("home");
   const [darkMode, setDarkMode] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authMethod, setAuthMethod] = useState<"sms" | "password">("sms");
+  const [authPasswordMode, setAuthPasswordMode] = useState<"register" | "login">("login");
+  const [authPhone, setAuthPhone] = useState("");
+  const [authSmsCode, setAuthSmsCode] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authPasswordConfirm, setAuthPasswordConfirm] = useState("");
+  const [smsDebugCode, setSmsDebugCode] = useState("");
+  const [smsCooldown, setSmsCooldown] = useState(0);
+  const [authPending, setAuthPending] = useState(false);
+  const [authError, setAuthError] = useState("");
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const [sidebarConversations, setSidebarConversations] = useState<ConversationItem[]>([]);
+  const [sidebarHistoryLoading, setSidebarHistoryLoading] = useState(false);
+  const [sidebarHistoryError, setSidebarHistoryError] = useState("");
+  const [activeConversationId, setActiveConversationId] = useState<number | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profilePending, setProfilePending] = useState(false);
+  const [profileMsg, setProfileMsg] = useState("");
+  const [profileDisplayName, setProfileDisplayName] = useState("");
+  const [profileBio, setProfileBio] = useState("");
+  const [profileAvatarEmoji, setProfileAvatarEmoji] = useState("👤");
+  const [profileTopics, setProfileTopics] = useState<string[]>([]);
+  const [profileKeywords, setProfileKeywords] = useState("");
+  const [profileStats, setProfileStats] = useState<{ conversation_count: number; message_count: number; last_chat_at: string | null }>({
+    conversation_count: 0,
+    message_count: 0,
+    last_chat_at: null,
+  });
 
   useEffect(() => {
     const saved = window.localStorage.getItem("peragent-dark-mode");
@@ -1029,12 +1651,288 @@ const App = () => {
     window.localStorage.setItem("peragent-dark-mode", darkMode ? "1" : "0");
   }, [darkMode]);
 
+  useEffect(() => {
+    if (smsCooldown <= 0) return;
+    const timer = window.setInterval(() => {
+      setSmsCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [smsCooldown]);
+
+  const fetchUserProfile = async (userId: number) => {
+    const result = await getJsonWithFallback(`/api/auth/me?user_id=${userId}`);
+    if (!result.ok) {
+      const msg = result.error === "Not Found" ? "用户信息接口未找到，请确认后端已启动" : result.error;
+      throw new Error(msg || "读取用户资料失败");
+    }
+    const data = result.data as AuthMeResponse;
+    if (!data.user) throw new Error("用户资料为空");
+    setCurrentUser(data.user);
+    setProfileDisplayName(data.user.display_name || data.user.username);
+    setProfileBio(data.user.bio || "");
+    setProfileAvatarEmoji(data.user.avatar_emoji || "👤");
+    setProfileTopics(Array.isArray(data.preference?.research_topics) ? data.preference?.research_topics ?? [] : []);
+    setProfileKeywords(data.preference?.recent_keywords || "");
+    setProfileStats({
+      conversation_count: data.stats?.conversation_count ?? 0,
+      message_count: data.stats?.message_count ?? 0,
+      last_chat_at: data.stats?.last_chat_at ?? null,
+    });
+  };
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
+      if (!raw) return;
+      const cached = JSON.parse(raw) as AuthUser;
+      if (cached?.id) {
+        fetchUserProfile(cached.id).catch(() => {
+          setCurrentUser(null);
+          window.localStorage.removeItem(AUTH_STORAGE_KEY);
+        });
+      }
+    } catch {
+      window.localStorage.removeItem(AUTH_STORAGE_KEY);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (currentUser) {
+      window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(currentUser));
+    } else {
+      window.localStorage.removeItem(AUTH_STORAGE_KEY);
+      setSidebarConversations([]);
+      setActiveConversationId(null);
+    }
+  }, [currentUser]);
+
+  const refreshSidebarConversations = async () => {
+    if (!currentUser?.id) {
+      setSidebarConversations([]);
+      setSidebarHistoryError("");
+      return;
+    }
+    setSidebarHistoryLoading(true);
+    setSidebarHistoryError("");
+    const result = await getJsonWithFallback(`/api/chat/conversations?user_id=${currentUser.id}`);
+    if (!result.ok) {
+      const msg =
+        result.error === "Not Found"
+          ? "历史接口未找到，请确认后端已启动"
+          : result.error?.includes("用户不存在")
+            ? "登录态已失效，请重新登录"
+            : result.error?.includes("Failed to fetch")
+              ? "无法连接后端历史服务，请检查后端端口与网络"
+              : result.error;
+      if (result.error?.includes("用户不存在")) {
+        setCurrentUser(null);
+        window.localStorage.removeItem(AUTH_STORAGE_KEY);
+      }
+      setSidebarConversations([]);
+      setSidebarHistoryError(msg || "读取历史会话失败");
+      setSidebarHistoryLoading(false);
+      return;
+    }
+    const data = result.data as ConversationListResponse;
+    const items = Array.isArray(data.items) ? data.items : [];
+    setSidebarConversations(items);
+    if (items.length === 0) {
+      setActiveConversationId(null);
+    } else if (!activeConversationId || !items.some((x) => x.id === activeConversationId)) {
+      setActiveConversationId(items[0].id);
+    }
+    setSidebarHistoryLoading(false);
+  };
+
+  useEffect(() => {
+    refreshSidebarConversations();
+  }, [currentUser?.id]);
+
+  const normalizePhone = (raw: string) => {
+    const s = raw.replace(/\s+/g, "").replace(/-/g, "");
+    if (s.startsWith("+86")) return s.slice(3);
+    if (s.startsWith("86") && s.length === 13) return s.slice(2);
+    return s;
+  };
+
+  const openAuth = () => {
+    setAuthOpen(true);
+    setAuthMethod("sms");
+    setAuthPasswordMode("login");
+    setAuthError("");
+    setAuthPassword("");
+    setAuthPasswordConfirm("");
+    setSmsDebugCode("");
+  };
+
+  const handleSendSmsCode = async () => {
+    const phone = normalizePhone(authPhone);
+    if (!/^1[3-9]\d{9}$/.test(phone)) {
+      setAuthError("手机号格式不正确，仅支持中国大陆手机号");
+      return;
+    }
+    if (smsCooldown > 0 || authPending) return;
+    setAuthPending(true);
+    setAuthError("");
+    setSmsDebugCode("");
+    try {
+      const result = await postJsonWithFallback("/api/auth/sms/send", { phone });
+      if (!result.ok) {
+        throw new Error(result.error || "发送验证码失败");
+      }
+      const data = result.data as { cooldown_seconds?: number; debug_code?: string };
+      setSmsCooldown(data.cooldown_seconds ?? 60);
+      if (data.debug_code) {
+        setSmsDebugCode(data.debug_code);
+        setAuthSmsCode(data.debug_code);
+      }
+    } catch (e) {
+      setAuthError(e instanceof Error ? e.message : "发送验证码失败");
+    } finally {
+      setAuthPending(false);
+    }
+  };
+
+  const handleVerifySmsLogin = async () => {
+    const phone = normalizePhone(authPhone);
+    const code = authSmsCode.trim();
+    if (!/^1[3-9]\d{9}$/.test(phone)) {
+      setAuthError("手机号格式不正确，仅支持中国大陆手机号");
+      return;
+    }
+    if (!/^\d{6}$/.test(code)) {
+      setAuthError("请输入 6 位数字验证码");
+      return;
+    }
+    setAuthPending(true);
+    setAuthError("");
+    try {
+      const result = await postJsonWithFallback("/api/auth/sms/verify", { phone, code });
+      if (!result.ok) {
+        const msg = result.error === "Not Found" ? "登录接口未找到，请确认后端已启动并使用最新代码" : result.error;
+        throw new Error(msg || "验证码登录失败");
+      }
+      const data = result.data as Partial<AuthResponse>;
+      if (!data.user) {
+        throw new Error("验证码登录失败");
+      }
+      setCurrentUser(data.user);
+      await fetchUserProfile(data.user.id);
+      setAuthOpen(false);
+      setAuthError("");
+      setAuthSmsCode("");
+    } catch (e) {
+      setAuthError(e instanceof Error ? e.message : "验证码登录失败");
+    } finally {
+      setAuthPending(false);
+    }
+  };
+
+  const handlePasswordAuth = async () => {
+    const phone = normalizePhone(authPhone);
+    if (!/^1[3-9]\d{9}$/.test(phone)) {
+      setAuthError("手机号格式不正确，仅支持中国大陆手机号");
+      return;
+    }
+    if (authPassword.length < 6) {
+      setAuthError("密码至少 6 位");
+      return;
+    }
+    if (authPasswordMode === "register" && authPassword !== authPasswordConfirm) {
+      setAuthError("两次输入的密码不一致");
+      return;
+    }
+    setAuthPending(true);
+    setAuthError("");
+    try {
+      const path = authPasswordMode === "register" ? "/api/auth/password/register" : "/api/auth/password/login";
+      const result = await postJsonWithFallback(path, { phone, password: authPassword });
+      if (!result.ok) {
+        throw new Error(result.error || "密码登录失败");
+      }
+      const data = result.data as Partial<AuthResponse>;
+      if (!data.user) throw new Error("登录失败");
+      setCurrentUser(data.user);
+      await fetchUserProfile(data.user.id);
+      setAuthOpen(false);
+      setAuthPassword("");
+      setAuthPasswordConfirm("");
+    } catch (e) {
+      setAuthError(e instanceof Error ? e.message : "密码登录失败");
+    } finally {
+      setAuthPending(false);
+    }
+  };
+
+  const openProfile = () => {
+    if (!currentUser) {
+      openAuth();
+      return;
+    }
+    setProfileMsg("");
+    fetchUserProfile(currentUser.id).catch((e) => {
+      setProfileMsg(e instanceof Error ? e.message : "读取资料失败");
+    });
+    setProfileOpen(true);
+  };
+
+  const handleSaveProfile = async () => {
+    if (!currentUser) return;
+    setProfilePending(true);
+    setProfileMsg("");
+    try {
+      const profileResp = await postJsonWithFallback("/api/auth/profile", {
+        user_id: currentUser.id,
+        display_name: profileDisplayName,
+        bio: profileBio,
+        avatar_emoji: profileAvatarEmoji,
+      });
+      if (!profileResp.ok) throw new Error(profileResp.error || "保存个人信息失败");
+      await postJsonWithFallback("/api/auth/preferences", {
+        user_id: currentUser.id,
+        research_topics: profileTopics,
+        recent_keywords: profileKeywords,
+      });
+      await fetchUserProfile(currentUser.id);
+      setProfileMsg("个人信息已保存");
+    } catch (e) {
+      setProfileMsg(e instanceof Error ? e.message : "保存个人信息失败");
+    } finally {
+      setProfilePending(false);
+    }
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setProfileOpen(false);
+    setProfileMsg("");
+    setProfileTopics([]);
+    setProfileKeywords("");
+    setProfileStats({ conversation_count: 0, message_count: 0, last_chat_at: null });
+  };
+
   const CurrentView = useMemo(() => {
-    if (activeView === "search") return <SearchPage />;
+    if (activeView === "search") return <SearchPage currentUser={currentUser} />;
     if (activeView === "recommend") return <RecommendPage />;
     if (activeView === "polish") return <PolishPage />;
-    return <HomePage />;
-  }, [activeView]);
+    return (
+      <HomePage
+        currentUser={currentUser}
+        activeConversationId={activeConversationId}
+        onConversationCreated={(conversationId) => setActiveConversationId(conversationId)}
+        onHistoryRefresh={() => {
+          refreshSidebarConversations();
+        }}
+        onTraceUpdated={() => {
+          if (currentUser?.id) {
+            fetchUserProfile(currentUser.id).catch(() => {
+              // ignore trace refresh failure
+            });
+          }
+        }}
+      />
+    );
+  }, [activeView, currentUser, activeConversationId]);
 
   const viewMeta: Record<ViewKey, { title: string; subtitle: string }> = {
     home: {
@@ -1107,7 +2005,51 @@ const App = () => {
               </ul>
             </nav>
 
-            <div className="mt-auto pt-6">
+            <section className="mt-6 min-h-0 flex-1 rounded-xl border border-[#293242] bg-[#0f1a2a]/70 p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-xs font-semibold tracking-[0.06em] text-[#dce7f8]">历史记录</p>
+                {currentUser ? (
+                  <span className="text-[10px] text-[#98aac6]">{sidebarConversations.length} 条</span>
+                ) : null}
+              </div>
+
+              {!currentUser ? (
+                <p className="text-[11px] leading-5 text-[#8ea2be]">登录后展示历史会话，并可跨次查看。</p>
+              ) : null}
+              {currentUser && sidebarHistoryLoading ? <p className="text-[11px] text-[#8ea2be]">正在加载...</p> : null}
+              {currentUser && !sidebarHistoryLoading && sidebarHistoryError ? (
+                <p className="text-[11px] leading-5 text-rose-300">{sidebarHistoryError}</p>
+              ) : null}
+              {currentUser && !sidebarHistoryLoading && !sidebarHistoryError && sidebarConversations.length === 0 ? (
+                <p className="text-[11px] leading-5 text-[#8ea2be]">暂无历史会话，发送第一条消息后会自动创建。</p>
+              ) : null}
+
+              {currentUser && !sidebarHistoryLoading && !sidebarHistoryError && sidebarConversations.length > 0 ? (
+                <div className="scrollbar-thin mt-2 max-h-[300px] space-y-2 overflow-y-auto pr-1">
+                  {sidebarConversations.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        setActiveConversationId(item.id);
+                        setActiveView("home");
+                      }}
+                      className={`w-full rounded-lg border px-2.5 py-2 text-left transition ${
+                        activeConversationId === item.id
+                          ? "border-[#4e6f9f] bg-[#1a2d49]"
+                          : "border-[#31415a] bg-[#132238] hover:border-[#44608a] hover:bg-[#172943]"
+                      }`}
+                      title={item.title}
+                    >
+                      <p className="truncate text-xs font-medium text-[#e6eefc]">{item.title || `会话 #${item.id}`}</p>
+                      <p className="mt-1 text-[10px] text-[#9cb2d1]">{formatServerTime(item.updated_at)}</p>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </section>
+
+            <div className="pt-4">
               <div className="theme-switch-card rounded-xl border border-[#ddd7d2] bg-[#ebe7e3] p-3">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
@@ -1137,6 +2079,16 @@ const App = () => {
                   </button>
                 </div>
               </div>
+              <button
+                type="button"
+                onClick={currentUser ? openProfile : openAuth}
+                className="mt-3 w-full rounded-xl border border-[#ddd7d2] bg-[#ebe7e3] p-3 text-left transition hover:bg-white/80"
+              >
+                <p className="text-sm font-semibold text-[#2a2522]">{currentUser ? "个人信息" : "登录 / 注册"}</p>
+                <p className="mt-0.5 truncate text-[11px] text-[#6f6863]">
+                  {currentUser ? (currentUser.display_name || currentUser.username) : "手机号验证码登录"}
+                </p>
+              </button>
             </div>
           </div>
         </aside>
@@ -1164,6 +2116,215 @@ const App = () => {
           </main>
         </div>
       </div>
+
+      {authOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 px-4 backdrop-blur-[1px]">
+          <div className="w-full max-w-[680px] rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
+            <div className="mb-5 flex items-start justify-between">
+              <div>
+                <h3 className="text-3xl font-semibold text-slate-800">手机号登录 / 注册</h3>
+                <p className="mt-1.5 text-base text-slate-500">首次使用将自动创建账号，后续用同一手机号直接登录。</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAuthOpen(false)}
+                className="rounded-lg px-2 py-1 text-base text-slate-500 hover:bg-slate-100"
+              >
+                关闭
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+                <button
+                  type="button"
+                  onClick={() => setAuthMethod("sms")}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+                    authMethod === "sms" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500"
+                  }`}
+                >
+                  验证码登录
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAuthMethod("password")}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+                    authMethod === "password" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500"
+                  }`}
+                >
+                  密码登录
+                </button>
+              </div>
+
+              <label className="block">
+                <span className="mb-1.5 block text-base font-medium text-slate-600">手机号（+86）</span>
+                <input
+                  value={authPhone}
+                  onChange={(e) => setAuthPhone(e.target.value)}
+                  placeholder="请输入 11 位手机号"
+                  className="h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                />
+              </label>
+
+              {authMethod === "sms" ? (
+                <div className="grid grid-cols-[1fr_auto] gap-3">
+                  <input
+                    value={authSmsCode}
+                    onChange={(e) => setAuthSmsCode(e.target.value)}
+                    placeholder="请输入 6 位验证码"
+                    className="h-12 rounded-xl border border-slate-200 bg-white px-4 text-base outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSendSmsCode}
+                    disabled={authPending || smsCooldown > 0}
+                    className="h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                  >
+                    {smsCooldown > 0 ? `${smsCooldown}s` : "获取验证码"}
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+                    <button
+                      type="button"
+                      onClick={() => setAuthPasswordMode("login")}
+                      className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+                        authPasswordMode === "login" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500"
+                      }`}
+                    >
+                      密码登录
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAuthPasswordMode("register")}
+                      className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+                        authPasswordMode === "register" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500"
+                      }`}
+                    >
+                      首次注册
+                    </button>
+                  </div>
+                  <input
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                    type="password"
+                    placeholder="请输入密码（至少6位）"
+                    className="h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                  />
+                  {authPasswordMode === "register" ? (
+                    <input
+                      value={authPasswordConfirm}
+                      onChange={(e) => setAuthPasswordConfirm(e.target.value)}
+                      type="password"
+                      placeholder="请再次输入密码"
+                      className="h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                    />
+                  ) : null}
+                </>
+              )}
+
+              {authError ? <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{authError}</div> : null}
+              {smsDebugCode ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                  联调验证码：{smsDebugCode}
+                </div>
+              ) : null}
+
+              <button
+                type="button"
+                onClick={authMethod === "sms" ? handleVerifySmsLogin : handlePasswordAuth}
+                disabled={authPending}
+                className="h-12 w-full rounded-xl bg-blue-600 px-4 text-base font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+              >
+                {authPending ? "处理中..." : authMethod === "sms" ? "验证码登录" : authPasswordMode === "register" ? "注册并登录" : "密码登录"}
+              </button>
+              <p className="text-center text-xs text-slate-500">
+                仅支持中国大陆手机号。首次请用“密码登录-首次注册”创建账号，后续可密码或验证码登录。
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {profileOpen && currentUser ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/35 px-4">
+          <div className="w-full max-w-[760px] rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-2xl font-semibold text-slate-800">个人信息</h3>
+              <button
+                type="button"
+                onClick={() => setProfileOpen(false)}
+                className="rounded-lg px-2 py-1 text-sm text-slate-500 hover:bg-slate-100"
+              >
+                关闭
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="grid grid-cols-[84px_1fr] items-center gap-2">
+                <label className="text-sm text-slate-600">头像</label>
+                <input
+                  value={profileAvatarEmoji}
+                  onChange={(e) => setProfileAvatarEmoji(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-400"
+                />
+              </div>
+              <div className="grid grid-cols-[84px_1fr] items-center gap-2">
+                <label className="text-sm text-slate-600">用户名</label>
+                <p className="text-sm text-slate-700">{currentUser.username}</p>
+              </div>
+              <div className="grid grid-cols-[84px_1fr] items-center gap-2">
+                <label className="text-sm text-slate-600">显示名</label>
+                <input
+                  value={profileDisplayName}
+                  onChange={(e) => setProfileDisplayName(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-400"
+                />
+              </div>
+              <div className="grid grid-cols-[84px_1fr] items-start gap-2">
+                <label className="pt-2 text-sm text-slate-600">简介</label>
+                <textarea
+                  value={profileBio}
+                  onChange={(e) => setProfileBio(e.target.value)}
+                  rows={3}
+                  className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-400"
+                />
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-sm font-semibold text-slate-800">用户痕迹</p>
+                <p className="mt-1 text-sm text-slate-600">最近论文领域：{profileTopics.length ? profileTopics.join("、") : "暂无"}</p>
+                <p className="mt-1 text-sm text-slate-600">近期关键词：{profileKeywords || "暂无"}</p>
+                <p className="mt-1 text-sm text-slate-600">历史会话：{profileStats.conversation_count} 个</p>
+                <p className="mt-1 text-sm text-slate-600">累计消息：{profileStats.message_count} 条</p>
+                <p className="mt-1 text-sm text-slate-600">最近对话：{formatServerTime(profileStats.last_chat_at)}</p>
+                <p className="mt-1 text-sm text-slate-600">最近登录：{formatServerTime(currentUser.last_login_at)}</p>
+              </div>
+
+              {profileMsg ? <p className="text-xs text-slate-600">{profileMsg}</p> : null}
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveProfile}
+                  disabled={profilePending}
+                  className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-slate-300"
+                >
+                  {profilePending ? "保存中..." : "保存"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
+                >
+                  退出登录
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };

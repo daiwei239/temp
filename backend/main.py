@@ -16,6 +16,7 @@ import html
 from datetime import datetime, timezone
 import xml.etree.ElementTree as ET
 from urllib.parse import quote_plus, quote
+import time
 
 
 def _load_env_file() -> None:
@@ -47,20 +48,24 @@ try:
       init_db,
       register_user,
       verify_login,
+      register_user_by_phone,
+      verify_login_by_phone,
       save_chat_record,
       get_chat_history,
       create_conversation,
+      update_conversation_title,
       list_conversations,
       get_conversation_messages,
       get_user_by_id,
+      get_user_by_phone,
       update_user_profile,
       update_research_topics,
+      append_user_preference_keywords,
       get_user_preference,
       get_user_stats,
       sms_rate_check,
       create_sms_code,
       validate_sms_code,
-      create_or_get_user_by_phone,
   )
   AUTH_READY = True
   AUTH_INIT_ERROR = ""
@@ -88,9 +93,25 @@ class LoginRequest(BaseModel):
   password: str = Field(..., min_length=6, max_length=128)
 
 
+class PhonePasswordRegisterRequest(BaseModel):
+  phone: str = Field(..., min_length=11, max_length=20)
+  password: str = Field(..., min_length=6, max_length=128)
+
+
+class PhonePasswordLoginRequest(BaseModel):
+  phone: str = Field(..., min_length=11, max_length=20)
+  password: str = Field(..., min_length=6, max_length=128)
+
+
 class ConversationCreateRequest(BaseModel):
   user_id: int = Field(..., ge=1)
   title: str = Field("新对话", min_length=1, max_length=200)
+
+
+class ConversationTitleUpdateRequest(BaseModel):
+  user_id: int = Field(..., ge=1)
+  conversation_id: int = Field(..., ge=1)
+  title: str = Field(..., min_length=1, max_length=200)
 
 
 class ProfileUpdateRequest(BaseModel):
@@ -106,6 +127,12 @@ class PreferenceUpdateRequest(BaseModel):
   recent_keywords: Optional[str] = Field(default=None, max_length=500)
 
 
+class PreferenceAppendRequest(BaseModel):
+  user_id: int = Field(..., ge=1)
+  keywords: List[str] = Field(default_factory=list)
+  research_topics: List[str] = Field(default_factory=list)
+
+
 class SmsSendRequest(BaseModel):
   phone: str = Field(..., min_length=11, max_length=20)
 
@@ -118,6 +145,13 @@ class SmsVerifyRequest(BaseModel):
 class PolishRequest(BaseModel):
   text: str = Field(..., min_length=1, max_length=8000)
   styles: List[str] = Field(default_factory=list)
+
+
+class ChatAskRequest(BaseModel):
+  user_id: int = Field(..., ge=1)
+  conversation_id: int = Field(..., ge=1)
+  question: str = Field(..., min_length=1, max_length=2000)
+  answer_mode: str = Field(default="concise")
 
 
 @app.on_event("startup")
@@ -142,12 +176,19 @@ def _user_payload(user: Any) -> Dict[str, Any]:
 def _build_conversation_title(question: str) -> str:
   raw = (question or "").strip()
   if not raw:
-      return "新对话"
-  single_line = re.sub(r"\s+", " ", raw)
-  concise = re.sub(r"[。！？!?；;，,]+$", "", single_line)
-  if len(concise) > 28:
-      concise = f"{concise[:28].rstrip()}..."
-  return concise or "新对话"
+      return "论文追问会话"
+  return "论文追问会话"
+
+
+def _derive_paper_title_from_filename(filename: str) -> str:
+  name = os.path.basename(filename or "").strip()
+  if not name:
+      return "论文解析会话"
+  base, _ = os.path.splitext(name)
+  base = re.sub(r"[_\-]+", " ", base).strip()
+  if not base:
+      return "论文解析会话"
+  return base[:120]
 
 
 def _normalize_cn_phone(phone: str) -> str:
@@ -264,6 +305,42 @@ async def auth_login(payload: LoginRequest) -> Dict[str, Any]:
       raise HTTPException(status_code=500, detail=f"login_failed: {str(e)}")
 
 
+@app.post("/api/auth/password/register")
+async def auth_password_register(payload: PhonePasswordRegisterRequest) -> Dict[str, Any]:
+  if not AUTH_READY:
+      raise HTTPException(status_code=500, detail=f"auth_not_ready: {AUTH_INIT_ERROR}")
+  try:
+      phone = _normalize_cn_phone(payload.phone)
+      if not _is_valid_cn_phone(phone):
+          raise HTTPException(status_code=400, detail="手机号格式不正确，仅支持中国大陆手机号")
+      user = register_user_by_phone(phone, payload.password)
+      return {"ok": True, "user": _user_payload(user)}
+  except ValueError as e:
+      raise HTTPException(status_code=400, detail=str(e))
+  except HTTPException:
+      raise
+  except Exception as e:
+      raise HTTPException(status_code=500, detail=f"password_register_failed: {str(e)}")
+
+
+@app.post("/api/auth/password/login")
+async def auth_password_login(payload: PhonePasswordLoginRequest) -> Dict[str, Any]:
+  if not AUTH_READY:
+      raise HTTPException(status_code=500, detail=f"auth_not_ready: {AUTH_INIT_ERROR}")
+  try:
+      phone = _normalize_cn_phone(payload.phone)
+      if not _is_valid_cn_phone(phone):
+          raise HTTPException(status_code=400, detail="手机号格式不正确，仅支持中国大陆手机号")
+      user = verify_login_by_phone(phone, payload.password)
+      if user is None:
+          raise HTTPException(status_code=401, detail="手机号或密码错误")
+      return {"ok": True, "user": _user_payload(user)}
+  except HTTPException:
+      raise
+  except Exception as e:
+      raise HTTPException(status_code=500, detail=f"password_login_failed: {str(e)}")
+
+
 @app.post("/api/auth/sms/send")
 async def auth_sms_send(payload: SmsSendRequest) -> Dict[str, Any]:
   if not AUTH_READY:
@@ -272,6 +349,8 @@ async def auth_sms_send(payload: SmsSendRequest) -> Dict[str, Any]:
       phone = _normalize_cn_phone(payload.phone)
       if not _is_valid_cn_phone(phone):
           raise HTTPException(status_code=400, detail="手机号格式不正确，仅支持中国大陆手机号")
+      if get_user_by_phone(phone) is None:
+          raise HTTPException(status_code=400, detail="该手机号未注册，请先使用密码注册")
       ok, msg = sms_rate_check(phone=phone, cooldown_seconds=60, daily_limit=10)
       if not ok:
           raise HTTPException(status_code=429, detail=msg)
@@ -302,10 +381,12 @@ async def auth_sms_verify(payload: SmsVerifyRequest) -> Dict[str, Any]:
           raise HTTPException(status_code=400, detail="手机号格式不正确，仅支持中国大陆手机号")
       if re.fullmatch(r"^\d{6}$", code) is None:
           raise HTTPException(status_code=400, detail="验证码格式不正确")
+      user = get_user_by_phone(phone)
+      if user is None:
+          raise HTTPException(status_code=400, detail="该手机号未注册，请先使用密码注册")
       valid = validate_sms_code(phone=phone, code=code, purpose="login")
       if not valid:
           raise HTTPException(status_code=401, detail="验证码错误或已过期")
-      user = create_or_get_user_by_phone(phone)
       return {"ok": True, "user": _user_payload(user)}
   except HTTPException:
       raise
@@ -378,6 +459,30 @@ async def auth_update_preferences(payload: PreferenceUpdateRequest) -> Dict[str,
       raise HTTPException(status_code=400, detail=str(e))
   except Exception as e:
       raise HTTPException(status_code=500, detail=f"preferences_update_failed: {str(e)}")
+
+
+@app.post("/api/auth/preferences/append")
+async def auth_append_preferences(payload: PreferenceAppendRequest) -> Dict[str, Any]:
+  if not AUTH_READY:
+      raise HTTPException(status_code=500, detail=f"auth_not_ready: {AUTH_INIT_ERROR}")
+  try:
+      pref = append_user_preference_keywords(
+          user_id=payload.user_id,
+          keywords=payload.keywords,
+          research_topics=payload.research_topics,
+      )
+      return {
+          "ok": True,
+          "preference": {
+              "user_id": pref.user_id,
+              "research_topics": list(pref.research_topics or []),
+              "recent_keywords": pref.recent_keywords or "",
+          },
+      }
+  except ValueError as e:
+      raise HTTPException(status_code=400, detail=str(e))
+  except Exception as e:
+      raise HTTPException(status_code=500, detail=f"preferences_append_failed: {str(e)}")
 
 
 def _extract_chat_content(payload_obj: Dict[str, Any]) -> str:
@@ -553,7 +658,10 @@ async def auth_create_conversation(payload: ConversationCreateRequest) -> Dict[s
   if not AUTH_READY:
       raise HTTPException(status_code=500, detail=f"auth_not_ready: {AUTH_INIT_ERROR}")
   try:
-      conv = create_conversation(payload.user_id, payload.title)
+      title = (payload.title or "").strip()
+      if not title or title == "新对话":
+          title = "论文解析会话"
+      conv = create_conversation(payload.user_id, title)
       return {
           "ok": True,
           "item": {
@@ -568,6 +676,28 @@ async def auth_create_conversation(payload: ConversationCreateRequest) -> Dict[s
       raise HTTPException(status_code=400, detail=str(e))
   except Exception as e:
       raise HTTPException(status_code=500, detail=f"create_conversation_failed: {str(e)}")
+
+
+@app.put("/api/chat/conversations/title")
+async def auth_update_conversation_title(payload: ConversationTitleUpdateRequest) -> Dict[str, Any]:
+  if not AUTH_READY:
+      raise HTTPException(status_code=500, detail=f"auth_not_ready: {AUTH_INIT_ERROR}")
+  try:
+      conv = update_conversation_title(payload.user_id, payload.conversation_id, payload.title)
+      return {
+          "ok": True,
+          "item": {
+              "id": conv.id,
+              "user_id": conv.user_id,
+              "title": conv.title,
+              "created_at": conv.created_at.isoformat(),
+              "updated_at": conv.updated_at.isoformat(),
+          },
+      }
+  except ValueError as e:
+      raise HTTPException(status_code=400, detail=str(e))
+  except Exception as e:
+      raise HTTPException(status_code=500, detail=f"update_conversation_title_failed: {str(e)}")
 
 
 @app.get("/api/chat/messages")
@@ -597,6 +727,84 @@ async def auth_chat_messages(
       raise HTTPException(status_code=400, detail=str(e))
   except Exception as e:
       raise HTTPException(status_code=500, detail=f"chat_messages_failed: {str(e)}")
+
+
+@app.post("/api/chat/ask")
+async def auth_chat_ask(payload: ChatAskRequest) -> Dict[str, Any]:
+  if not AUTH_READY:
+      raise HTTPException(status_code=500, detail=f"auth_not_ready: {AUTH_INIT_ERROR}")
+  question = (payload.question or "").strip()
+  if not question:
+      raise HTTPException(status_code=400, detail="问题不能为空")
+  answer_mode = (payload.answer_mode or "concise").strip().lower()
+  if answer_mode not in {"concise", "detailed"}:
+      answer_mode = "concise"
+
+  mode_hint = (
+      "请详细回答：分点展开、给出方法细节和必要示例。"
+      if answer_mode == "detailed"
+      else "请精简回答：2-4句，先给结论，再补1-2个关键点。"
+  )
+
+  try:
+      rows = get_conversation_messages(payload.user_id, payload.conversation_id)
+      history: list[Dict[str, str]] = []
+      for item in rows[-12:]:
+          role = "assistant" if item.role == "assistant" else "user"
+          content = str(item.content or "").strip()
+          if content:
+              history.append({"role": role, "content": content})
+
+      save_chat_record(
+          user_id=payload.user_id,
+          role="user",
+          content=question,
+          conversation_id=payload.conversation_id,
+      )
+
+      messages = [
+          {
+              "role": "system",
+              "content": f"你是论文研究助手。请基于历史会话上下文使用中文回答。{mode_hint}",
+          },
+          {
+              "role": "user",
+              "content": "以下是该会话已保存的上下文，请延续同一论文主题回答。",
+          },
+      ]
+      messages.extend(history)
+      messages.append({"role": "user", "content": question})
+
+      req_payload = {
+          "model": MODEL_NAME,
+          "messages": messages,
+          "stream": False,
+          "temperature": 0.2,
+      }
+      headers = {"Authorization": f"Bearer {MODELSCOPE_API_TOKEN}", "Content-Type": "application/json"}
+      answer = ""
+      try:
+          async with httpx.AsyncClient(timeout=40, trust_env=False) as client:
+              resp = await client.post(MODELSCOPE_API_URL, headers=headers, json=req_payload)
+          if resp.status_code == 200:
+              answer = extract_nonstream_content(resp.json()).strip()
+      except Exception:
+          answer = ""
+
+      if not answer:
+          answer = "已收到你的问题。当前仅基于历史会话继续回答，如需更高准确度请重新上传论文。"
+
+      save_chat_record(
+          user_id=payload.user_id,
+          role="assistant",
+          content=answer,
+          conversation_id=payload.conversation_id,
+      )
+      return {"ok": True, "answer": answer}
+  except ValueError as e:
+      raise HTTPException(status_code=400, detail=str(e))
+  except Exception as e:
+      raise HTTPException(status_code=500, detail=f"chat_ask_failed: {str(e)}")
 # 鐠佸墽鐤?ModelScope API Token閿涘牓鐡熼幖銇為崠铏规畱 token閿?
 MODELSCOPE_API_TOKEN = "ms-0be979b5-11b5-462c-ab46-afa93062154f"
 MODELSCOPE_API_URL = "https://api-inference.modelscope.cn/v1/chat/completions"
@@ -778,6 +986,11 @@ SCHOLAR_MIRROR_BASES = [
   "https://scholar.lanfanshu.cn",
   "https://scholar.google.com",
 ]
+
+SCHOLAR_REQUEST_TIMEOUT_SECONDS = float(os.getenv("SCHOLAR_REQUEST_TIMEOUT_SECONDS", "6"))
+SCHOLAR_MAX_SOURCES = max(1, int(os.getenv("SCHOLAR_MAX_SOURCES", "1")))
+RECOMMENDATION_CACHE_TTL_SECONDS = max(30, int(os.getenv("RECOMMENDATION_CACHE_TTL_SECONDS", "180")))
+_RECOMMENDATION_CACHE: Dict[str, Dict[str, Any]] = {}
 
 
 def _split_keywords(raw: str) -> list[str]:
@@ -1274,6 +1487,14 @@ async def get_recommendations(
   domain_key = domain.strip().lower()
   if domain_key not in ARXIV_DOMAIN_VENUE:
       domain_key = "ai"
+  cache_key = f"{domain_key}:{limit}"
+  now_ts = time.time()
+  cached = _RECOMMENDATION_CACHE.get(cache_key)
+  if cached and now_ts - float(cached.get("ts", 0)) <= RECOMMENDATION_CACHE_TTL_SECONDS:
+      cached_payload = dict(cached.get("payload", {}))
+      cached_payload["cached"] = True
+      return cached_payload
+
   venue_name = ARXIV_DOMAIN_VENUE.get(domain_key, "TOP")
   profile = VENUE_SEARCH_PROFILE.get(domain_key, {})
   venue_query = str(profile.get("query", venue_name)).strip() or venue_name
@@ -1281,11 +1502,12 @@ async def get_recommendations(
 
   last_error = "unknown"
   tried_sources: list[str] = []
-  for base in SCHOLAR_MIRROR_BASES:
+  candidate_sources = SCHOLAR_MIRROR_BASES[:SCHOLAR_MAX_SOURCES]
+  for base in candidate_sources:
       url = f"{base}/scholar?hl=zh-CN&as_sdt=0,5&num=30&q={scholar_query}"
       tried_sources.append(base)
       try:
-          async with httpx.AsyncClient(timeout=20, trust_env=False, follow_redirects=True) as client:
+          async with httpx.AsyncClient(timeout=SCHOLAR_REQUEST_TIMEOUT_SECONDS, trust_env=False, follow_redirects=True) as client:
               resp = await client.get(url)
           if resp.status_code != 200:
               last_error = f"{base}:http_{resp.status_code}"
@@ -1302,18 +1524,20 @@ async def get_recommendations(
           for item in ranked:
               item["domain"] = domain_key
               item["venue"] = venue_name
-          return {
+          payload = {
               "domain": domain_key,
               "items": ranked,
               "source": base,
               "tried_sources": tried_sources,
               "venue": venue_name,
           }
+          _RECOMMENDATION_CACHE[cache_key] = {"ts": now_ts, "payload": payload}
+          return payload
       except Exception as e:
           last_error = f"{base}:{str(e)[:80]}"
           continue
 
-  return {
+  payload = {
       "domain": domain_key,
       "items": _build_recommendation_fallback_items(domain_key, limit),
       "source": "fallback",
@@ -1321,12 +1545,15 @@ async def get_recommendations(
       "venue": venue_name,
       "error": f"all_sources_failed:{last_error}",
   }
+  _RECOMMENDATION_CACHE[cache_key] = {"ts": now_ts, "payload": payload}
+  return payload
 
 
 @app.get("/api/search")
 async def search_papers(
   q: str = Query(..., min_length=1, max_length=200),
   limit: int = Query(10, ge=1, le=20),
+  user_id: Optional[int] = Query(default=None, ge=1),
 ) -> Dict[str, Any]:
   keyword = q.strip()
   if not keyword:
@@ -1337,11 +1564,12 @@ async def search_papers(
 
   last_error = "unknown"
   tried_sources: list[str] = []
-  for base in SCHOLAR_MIRROR_BASES:
+  candidate_sources = SCHOLAR_MIRROR_BASES[: max(1, min(2, SCHOLAR_MAX_SOURCES + 1))]
+  for base in candidate_sources:
       url = f"{base}/scholar?hl=zh-CN&as_sdt=0,5&num=20&q={scholar_query}"
       tried_sources.append(base)
       try:
-          async with httpx.AsyncClient(timeout=20, trust_env=False, follow_redirects=True) as client:
+          async with httpx.AsyncClient(timeout=SCHOLAR_REQUEST_TIMEOUT_SECONDS, trust_env=False, follow_redirects=True) as client:
               resp = await client.get(url)
           if resp.status_code != 200:
               last_error = f"{base}:http_{resp.status_code}"
@@ -1497,15 +1725,17 @@ async def upload_paper(request: Request) -> Dict[str, str]:
   if not extracted_text.strip():
       extracted_text = f"Uploaded file: {filename}. Content length: {len(raw_bytes)} bytes."
 
+  paper_title = _derive_paper_title_from_filename(filename)
   PAPERS[paper_id] = {
       "filename": filename,
+      "title": paper_title,
       "text": extracted_text[:300000],
       "meta": extract_basic_meta(raw_bytes, extracted_text, filename),
       "raw_size": len(raw_bytes),
       "step1_result": None,
       "chat_history": [],
   }
-  return {"paper_id": paper_id}
+  return {"paper_id": paper_id, "paper_title": paper_title}
 
 
 @app.websocket("/ws/paper/{paper_id}")
@@ -1519,7 +1749,17 @@ async def paper_stream(ws: WebSocket, paper_id: str) -> None:
 
           if action == "analyze_step1":
               try:
-                  await run_step1_with_qwen(ws, paper_id)
+                  user_id = msg.get("user_id")
+                  conversation_id = msg.get("conversation_id")
+                  try:
+                      user_id = int(user_id) if user_id is not None else None
+                  except Exception:
+                      user_id = None
+                  try:
+                      conversation_id = int(conversation_id) if conversation_id is not None else None
+                  except Exception:
+                      conversation_id = None
+                  await run_step1_with_qwen(ws, paper_id, user_id, conversation_id)
               except Exception as e:
                   await ws.send_json(
                       {
@@ -1560,7 +1800,12 @@ async def paper_stream(ws: WebSocket, paper_id: str) -> None:
       return
 
 
-async def run_step1_with_qwen(ws: WebSocket, paper_id: str) -> None:
+async def run_step1_with_qwen(
+  ws: WebSocket,
+  paper_id: str,
+  user_id: int | None = None,
+  conversation_id: int | None = None,
+) -> None:
   """Step 1: run structured analysis and stream incremental output to frontend."""
   paper = PAPERS.get(paper_id)
   if not paper:
@@ -1759,10 +2004,47 @@ async def run_step1_with_qwen(ws: WebSocket, paper_id: str) -> None:
 
   if paper_id in PAPERS:
       PAPERS[paper_id]["step1_result"] = normalized
+      if normalized.get("title"):
+          PAPERS[paper_id]["title"] = str(normalized.get("title")).strip()[:120]
   for card in build_step1_cards(normalized):
       await ws.send_json({"type": "step1_card", "card": card})
       await asyncio.sleep(0.06)
   await ws.send_json({"type": "step1_done", "data": normalized})
+
+  if AUTH_READY and user_id:
+      try:
+          merged_keywords = [
+              str(k).strip()
+              for k in (merged_meta.get("keywords") or [])
+              if str(k).strip() and str(k).strip() != "待识别"
+          ]
+          if merged_keywords:
+              append_user_preference_keywords(
+                  user_id=user_id,
+                  keywords=merged_keywords,
+                  research_topics=merged_keywords[:5],
+              )
+      except Exception:
+          pass
+
+  if AUTH_READY and user_id and conversation_id:
+      try:
+          final_title = str(normalized.get("title", "")).strip()
+          if final_title:
+              update_conversation_title(user_id, conversation_id, final_title[:200])
+          concise = [
+              f"论文标题：{final_title or '待识别'}",
+              f"核心方法：{str(normalized.get('core_methodology', '')).strip()[:160]}",
+              f"研究缺口：{str(normalized.get('research_gap', '')).strip()[:160]}",
+          ]
+          save_chat_record(
+              user_id=user_id,
+              role="assistant",
+              content="\n".join([x for x in concise if x and not x.endswith("：")]),
+              conversation_id=conversation_id,
+          )
+      except Exception:
+          pass
 
 
 async def run_paper_chat(
